@@ -1,0 +1,21 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+.venv/
+.pytest_cache/
+
+# Generated data / large artifacts — regenerate via the scripts, don't commit
+catalog/data/*.json
+catalog/data/*.csv
+app/data/*.json
+rag/data/*.index
+rag/data/*.json
+training/data/*.jsonl
+training/output/
+tests/data/*.jsonl
+tests/results/*.jsonl
+tests/results/*.md
+models/
+llama.cpp/

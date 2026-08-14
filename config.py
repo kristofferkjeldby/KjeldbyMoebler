@@ -1,0 +1,249 @@
+"""Shared configuration and paths for the whole pipeline.
+
+Every stage (catalog generation, RAG indexing, training-data generation,
+fine-tuning, evaluation, and the Gradio app) imports from here so paths and
+the system-prompt template stay identical between training and inference.
+"""
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+
+# --- Claude (data generation + judging) ---
+CLAUDE_MODEL = "claude-sonnet-5"
+# Judging (scoring a model answer against a reference for factual accuracy /
+# hallucination) is a structured, comparison-style task rather than an
+# open-ended generation one — the smallest current model is reasonable for
+# it and meaningfully cheaper across a 500-question run.
+JUDGE_MODEL = "claude-haiku-4-5"
+
+# --- Catalog ---
+CATALOG_DIR = ROOT / "catalog" / "data"
+CATALOG_PATH = CATALOG_DIR / "catalog.json"
+NUM_PRODUCTS = 3000
+
+# Shared concurrency knob for all the Claude-generation scripts (catalog,
+# training data, test questions) — bump this if you have room on your rate
+# limit tier and want faster (if noisier / more retry-prone) generation.
+GENERATION_MAX_WORKERS = 20
+
+CATEGORIES = [
+    "sofa", "armchair", "loveseat", "sectional",
+    "dining_table", "coffee_table", "side_table", "console_table",
+    "bed_frame", "nightstand", "dresser", "wardrobe",
+    "bookshelf", "desk", "office_chair", "dining_chair", "bar_stool",
+    "tv_stand", "outdoor_set", "rug",
+    "lighting", "kitchen_unit",
+]
+
+# Which of the flexible `attributes` fields (see catalog/generate_catalog.py)
+# are meaningful for each category — used to instruct Claude which fields to
+# fill in and which to leave null, since all products share one flat
+# attributes schema (structured-output schemas can't vary shape per row).
+CATEGORY_ATTRIBUTE_FIELDS = {
+    "dining_chair": ["seat_height_cm", "weight_capacity_kg"],
+    "office_chair": ["seat_height_cm", "weight_capacity_kg"],
+    "bar_stool": ["seat_height_cm", "weight_capacity_kg"],
+    "dining_table": ["seats_count", "extendable"],
+    "coffee_table": [],
+    "side_table": [],
+    "console_table": [],
+    "sofa": ["seat_depth_cm", "weight_capacity_kg"],
+    "armchair": ["seat_depth_cm", "weight_capacity_kg"],
+    "loveseat": ["seat_depth_cm", "weight_capacity_kg"],
+    "sectional": ["seat_depth_cm", "weight_capacity_kg"],
+    "bed_frame": ["bed_size"],
+    "nightstand": ["num_drawers"],
+    "dresser": ["num_drawers"],
+    "wardrobe": ["num_shelves", "num_drawers"],
+    "bookshelf": ["num_shelves"],
+    "desk": [],
+    "tv_stand": ["num_shelves"],
+    "outdoor_set": ["seats_count", "weather_resistant"],
+    "rug": [],
+    "lighting": ["bulb_type", "lumens", "wattage", "dimmable", "mount_type"],
+    "kitchen_unit": ["unit_type", "door_count"],
+}
+ALL_ATTRIBUTE_FIELDS = sorted({f for fields in CATEGORY_ATTRIBUTE_FIELDS.values() for f in fields})
+
+# --- Stores ---
+STORES = ["København", "Århus", "Odense"]
+OUT_OF_STOCK_PROBABILITY = 0.15   # per store, independently
+RESTOCK_DAYS_RANGE = (7, 60)      # when out of stock, restock date is this many days out
+STOCK_QUANTITY_RANGE = (0, 40)    # sampled when a store isn't forced out-of-stock
+
+# --- Discounts ---
+DISCOUNT_PROBABILITY = 0.2
+DISCOUNT_PERCENT_RANGE = (10, 40)
+
+# --- Series (matching sets, e.g. a dining table + its matching chairs) ---
+NUM_SERIES = 300
+SERIES_ARCHETYPES = [
+    {"name": "dining_set", "categories": ["dining_table", "dining_chair"]},
+    {"name": "bedroom_set", "categories": ["bed_frame", "nightstand", "dresser"]},
+    {"name": "living_set", "categories": ["sofa", "armchair", "coffee_table"]},
+]
+
+# --- RAG ---
+RAG_DIR = ROOT / "rag" / "data"
+FAISS_INDEX_PATH = RAG_DIR / "catalog.index"
+RAG_METADATA_PATH = RAG_DIR / "catalog_meta.json"
+# Danish isn't in all-MiniLM-L6-v2's training data — multilingual-e5 covers it
+# and is a drop-in sentence-transformers replacement. Note: e5 models expect
+# "query: "/"passage: " prefixes on input text for best retrieval quality.
+EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
+# Reranks the bi-encoder's candidate pool for the semantic-fallback tier
+# (open-ended queries that hit neither name nor attribute matching) — a
+# cross-encoder scores (query, candidate) pairs jointly, which is more
+# precise than cosine similarity over independently-embedded vectors.
+CROSS_ENCODER_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+SEMANTIC_CANDIDATE_POOL_SIZE = 30  # bi-encoder recall pool, reranked down to RETRIEVAL_TOP_K
+RETRIEVAL_TOP_K = 8          # semantic fallback for open-ended questions (name/attribute matching are tried first)
+ENUMERATION_MAX_RESULTS = 12  # cap when a query matches many products (e.g. "what chairs come in yellow")
+DIMENSION_TOLERANCE_CM = 5    # "60cm deep" matches products within +/- this many cm
+
+# --- Training data ---
+TRAINING_DIR = ROOT / "training" / "data"
+TRAINING_DATA_PATH = TRAINING_DIR / "sft_dataset.jsonl"
+EXAMPLES_PER_PRODUCT = 6
+# Generation now runs against the pod model (no per-token API cost), so full
+# catalog coverage for single-product examples is affordable — every product
+# gets seen at least once, instead of the ~17% sample the Claude-token budget
+# used to force. The other categories are scaled up 3x to match.
+NUM_SINGLE_PRODUCT_SAMPLE = 2920
+NUM_MULTI_PRODUCT_EXAMPLES = 900
+NUM_UNANSWERABLE_EXAMPLES = 450
+NUM_ENUMERATION_EXAMPLES = 600   # "what chairs come in yellow?" style — list ALL matches, or none
+NUM_STORE_STOCK_EXAMPLES = 600   # "which dining tables are available at the Odense store?"
+NUM_DIMENSION_EXAMPLES = 300     # "I need a 60cm deep kitchen unit"
+NUM_SERIES_EXAMPLES = 300        # "what matches this dining table?"
+NUM_DISCOVERY_EXAMPLES = 500     # "I'm doing up my living room in a cozy style, any ideas?" — open-ended, no known product
+
+# Room + vibe combinations used to construct open-ended "help me find
+# something" discovery scenarios — the customer doesn't know what product
+# they want yet, unlike every other example type above.
+DISCOVERY_VIBES = [
+    "hyggeligt og varmt", "minimalistisk og enkelt", "moderne og stilrent",
+    "rustikt og naturligt", "skandinavisk", "industrielt", "elegant og klassisk",
+    "børnevenligt og praktisk", "budgetvenligt", "luksuriøst",
+]
+
+# --- Fine-tuning (runs on RunPod) ---
+# Mistral-Small-3.1-24B-Instruct-2503 (used for catalog/training-data
+# generation via vLLM, per EuroEval Danish NLG 2025/11/04) turned out to be a
+# vision-language model (Mistral3ForConditionalGeneration / Pixtral-based) —
+# fine via vLLM's own loading path, but NOT registered under transformers'
+# AutoModelForCausalLM, so QLoRA training via standard HF/PEFT/TRL tooling
+# can't load it directly. For the actual fine-tuned chat model, we use its
+# text-only predecessor instead: same Mistral-Small lineage and Apache-2.0
+# license, plain MistralForCausalLM architecture, ungated. Served on the pod
+# via vLLM after training (no GGUF conversion, no local Mac inference).
+BASE_MODEL_ID = "mistralai/Mistral-Small-24B-Instruct-2501"
+LORA_OUTPUT_DIR = ROOT / "training" / "output" / "lora-adapter"
+MERGED_MODEL_DIR = ROOT / "training" / "output" / "merged-model"
+
+# --- Evaluation ---
+EVAL_DIR = ROOT / "tests" / "data"
+TEST_QUESTIONS_PATH = EVAL_DIR / "test_questions.jsonl"
+NUM_TEST_QUESTIONS = 500
+RESULTS_DIR = ROOT / "tests" / "results"
+RAW_ANSWERS_PATH = RESULTS_DIR / "raw_answers.jsonl"
+JUDGED_RESULTS_PATH = RESULTS_DIR / "judged_results.jsonl"
+REPORT_PATH = RESULTS_DIR / "report.md"
+
+# --- Chat / system prompt (used identically in training data and inference) ---
+SYSTEM_PROMPT_TEMPLATE = """Du er en venlig og kyndig assistent i en møbelforretning. \
+Butikken har tre afdelinger: København, Århus og Odense.
+
+Besvar kundens spørgsmål udelukkende ud fra de produktoplysninger, der er angivet nedenfor. \
+Opfind aldrig priser, mål, farver, materialer, lagerstatus eller lokal tilgængelighed, \
+som ikke udtrykkeligt er angivet. Hvis svaret ikke findes i de angivne produkter, så sig \
+det ærligt og tilbyd at hjælpe med noget andet — gæt aldrig.
+
+Når du nævner to eller flere produkter, så brug en Markdown-punktliste (en linje pr. \
+produkt, startende med "- "), i stedet for at remse dem op i en sætning.
+
+Tilgængelige produkter:
+{context}"""
+
+# --- Danish-language retrieval vocab ---
+# Categories themselves stay as the same English internal keys used
+# everywhere else (SKUs, training data, attribute schema) — this only maps
+# how a Danish-speaking customer would refer to them in a query, used by
+# rag/retriever.py's rule-based category-detection tier.
+CATEGORY_PHRASES = {
+    "sofa": "sofa",
+    "armchair": "lænestol",
+    "loveseat": "to personers sofa",
+    "sectional": "hjørnesofa",
+    "dining_table": "spisebord",
+    "coffee_table": "sofabord",
+    "side_table": "sidebord",
+    "console_table": "konsolbord",
+    "bed_frame": "sengeramme",
+    "nightstand": "natbord",
+    "dresser": "kommode",
+    "wardrobe": "garderobeskab",
+    "bookshelf": "bogreol",
+    "desk": "skrivebord",
+    "office_chair": "kontorstol",
+    "dining_chair": "spisebordsstol",
+    "bar_stool": "barstol",
+    "tv_stand": "tv-bord",
+    "outdoor_set": "havemøbelsæt",
+    "rug": "tæppe",
+    "lighting": "belysning",
+    "kitchen_unit": "køkkenelement",
+}
+CATEGORY_WORDS = {
+    "sofa": {"sofa", "sofaer"},
+    "armchair": {"lænestol", "lænestole"},
+    "loveseat": {"loveseat", "loveseater", "to-personers", "sofa"},
+    "sectional": {"hjørnesofa", "hjørnesofaer"},
+    "dining_table": {"spisebord", "spiseborde"},
+    "coffee_table": {"sofabord", "sofaborde"},
+    "side_table": {"sidebord", "sideborde"},
+    "console_table": {"konsolbord", "konsolborde"},
+    "bed_frame": {"sengeramme", "sengerammer", "seng", "senge"},
+    "nightstand": {"natbord", "natborde"},
+    "dresser": {"kommode", "kommoder"},
+    "wardrobe": {"garderobeskab", "garderobeskabe", "klædeskab", "klædeskabe"},
+    "bookshelf": {"bogreol", "bogreoler", "reol", "reoler"},
+    "desk": {"skrivebord", "skriveborde"},
+    "office_chair": {"kontorstol", "kontorstole"},
+    "dining_chair": {"spisebordsstol", "spisebordsstole"},
+    "bar_stool": {"barstol", "barstole"},
+    "tv_stand": {"tv-bord", "tv-borde"},
+    "outdoor_set": {"havemøbelsæt", "havemøbler"},
+    "rug": {"tæppe", "tæpper"},
+    "lighting": {"belysning", "lampe", "lamper"},
+    "kitchen_unit": {"køkkenelement", "køkkenelementer", "køkkenskab", "køkkenskabe"},
+}
+EXTRA_CATEGORY_TRIGGER_WORDS = {
+    "kitchen_unit": {"skab", "skabe", "element", "elementer"},
+}
+
+OUT_OF_STOCK_PHRASES = ("udsolgt", "ikke på lager", "ikke tilgængelig")
+IN_STOCK_PHRASES = ("på lager", "tilgængelig", "tilgængelige")
+CHEAP_PHRASES = ("billigst", "billigste", "laveste pris")
+EXPENSIVE_PHRASES = ("dyrest", "dyreste", "højeste pris")
+# Single-substring signals only — reliable regardless of what's in between.
+# Word-pair signals ("passer ... til/sammen", "går ... med") that tolerate
+# intervening words ("passer GODT sammen") are handled separately in
+# retriever.py, since a fixed phrase list can't cover every insertion.
+SERIES_INTENT_PHRASES = (
+    "matcher", "matchende", "sæt", "serie", "kollektion",
+)
+SERIES_INTENT_WORD_PAIRS = (
+    ("passer", "til"), ("passer", "sammen"), ("går", "med"),
+)
+DIM_KEYWORDS = {
+    "dyb": "depth_cm", "dybde": "depth_cm",
+    "bred": "width_cm", "bredde": "width_cm",
+    "høj": "height_cm", "højde": "height_cm",
+}
+# Danish alphabet includes æ/ø/å — plain [a-z] in a tokenizer regex silently
+# mangles them, splitting one Danish word into fragments.
+WORD_CHARS = "a-zæøå0-9"
+
+for _dir in (CATALOG_DIR, RAG_DIR, TRAINING_DIR, EVAL_DIR, RESULTS_DIR):
+    _dir.mkdir(parents=True, exist_ok=True)

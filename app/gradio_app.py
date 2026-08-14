@@ -1,0 +1,358 @@
+"""Gradio chat UI: retrieves relevant products via RAG, injects them into the
+system prompt, and generates a streamed reply from the fine-tuned model
+served on the RunPod GPU via vLLM.
+
+Runs on your Mac, but the model itself runs on the pod — reach it through an
+SSH tunnel first:
+    ssh -f -N -L 8000:localhost:8000 -p <port> -i <key> root@<pod-ip>
+
+Usage:
+    python -m app.gradio_app [--model mistralai/Mistral-Small-3.1-24B-Instruct-2503] [--base-url http://localhost:8000/v1]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+import gradio as gr
+
+# Renders any SKU or retrieved-product name the model mentions as a link
+# to a fake product URL. The chat runs in a separate-origin iframe embedded
+# in the landing page, so a click can't reach that page's DOM directly — a
+# head script (see PRODUCT_LINK_SCRIPT below) intercepts the click and
+# posts a message to the parent window, which opens the product modal.
+# (A bare "#product-<SKU>" fragment href doesn't render reliably through
+# Gradio's markdown pipeline — a normal-looking absolute URL does.)
+_SKU_RE = re.compile(r"\bFRN-\d{4}\b")
+_PRODUCT_URL = "https://kjeldbymobler.dk/produkt/{sku}"
+
+# The "focus-data" textbox (see build_app) carries the current focus set as
+# JSON, refreshed on every reply. It's a normal *visible* component (hidden
+# only via our own CSS below) so it always mounts through Gradio's regular
+# update path — an actually-invisible component is a less-exercised code
+# path and wasn't reliably readable from here. Gradio sets the value as a JS
+# property, not an HTML attribute, so a MutationObserver won't see it change
+# — polling is the reliable way to notice updates and relay them to the
+# parent page (a different origin, so it can't just read this iframe's DOM
+# directly).
+PRODUCT_LINK_SCRIPT = """
+<style>
+  #focus-data { position: absolute !important; width: 1px !important; height: 1px !important;
+    overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+
+  /* Gradio's fill_height relies on flex-grow all the way down, which only
+     resolves if html/body actually have a real height to grow into — by
+     default they don't inside an iframe, so without this the chat content
+     just shrinks to fit and leaves the rest of the iframe blank. */
+  /* overflow:hidden here is what actually matters: without it, the page
+     itself (not the inner message list) absorbs the extra height and
+     scrolls as a whole — which drags the input box out of view too. */
+  html, body { height: 100% !important; margin: 0 !important; overflow: hidden !important; }
+  /* .main.fillable had overflow:hidden but no actual fixed height, so it
+     just grew past 900px along with everything else and silently clipped
+     content with no scrollbar anywhere — verified via direct DOM inspection
+     (Playwright), not guessed. It needs a real height to clip *against*. */
+  .gradio-container .main.fillable {
+    padding: 10px 15px !important;
+    overflow: hidden !important;
+    height: 900px !important;
+    box-sizing: border-box !important;
+  }
+  /* flex-shrink alone doesn't shrink a flex item below its content size —
+     flex-basis defaults to "auto" (content-sized) unless overridden, so
+     every level here sized to its content first and never actually
+     compressed to fit. Forcing flex-basis:0 (via the shorthand) makes each
+     level start from zero and grow only into the space actually available,
+     which is what finally lets it get bounded instead of just growing
+     forever. Confirmed empirically, not guessed — same for min-height:0. */
+  .gradio-container .main.fillable, .gradio-container .main.fillable * {
+    min-height: 0 !important;
+  }
+  /* .main.fillable's direct children include the real chat wrapper plus
+     a couple of empty Gradio-internal placeholder divs (toast/error slots)
+     — applying flex:1 to *every* direct child let those empty siblings
+     claim an equal share of the 900px, starving the actual chat down to
+     about a third of the frame. Only the real chat wrapper should grow. */
+  .gradio-container .main.fillable > .wrap.svelte-zxu34v {
+    flex: 1 1 auto !important;
+  }
+  .gradio-container .main.fillable > *:not(.wrap.svelte-zxu34v) {
+    flex: 0 0 0 !important;
+  }
+  .gradio-container .main.fillable .wrap.svelte-zxu34v,
+  .gradio-container .main.fillable .contain.svelte-zxu34v,
+  .gradio-container .main.fillable .column,
+  .gradio-container .main.fillable .block.flex,
+  .gradio-container .main.fillable .wrapper {
+    flex: 1 1 0 !important;
+  }
+  .bubble-wrap, .message-wrap { overflow-y: auto !important; flex: 1 1 0 !important; }
+  /* Retry/undo (and edit) are per-message hover icons ChatInterface wires
+     up unconditionally in this Gradio version — no Python-level flag
+     disables them, so they're hidden via their icon-row wrapper instead. */
+  .message-buttons-left, .message-buttons-right { display: none !important; }
+  .example {
+    background: #e4dbcd !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+  .gradio-container, .message, .bubble {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif !important;
+  }
+</style>
+<script>
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('a[href*="kjeldbymobler.dk/produkt/"]');
+  if (!a) return;
+  e.preventDefault();
+  var sku = a.getAttribute('href').split('/produkt/')[1];
+  window.parent.postMessage({type: 'kjeldby-open-product', sku: sku}, '*');
+});
+
+(function () {
+  var lastValue = null;
+  setInterval(function () {
+    var el = document.querySelector('#focus-data textarea, #focus-data input');
+    if (!el || el.value === lastValue) return;
+    lastValue = el.value;
+    try {
+      var products = JSON.parse(el.value || '[]');
+      window.parent.postMessage({type: 'kjeldby-focus-update', products: products}, '*');
+    } catch (err) {}
+  }, 600);
+})();
+
+// Gradio's own autoscroll doesn't reliably keep up while streaming inside
+// this iframe layout, so the message list is force-scrolled to the bottom
+// directly instead of relying on it — but only while the customer is
+// already near the bottom (i.e. actively following the reply). Without
+// that check this fights any attempt to scroll up and read earlier
+// messages, snapping back down every tick regardless of intent.
+(function () {
+  var NEAR_BOTTOM_PX = 80;
+  setInterval(function () {
+    document.querySelectorAll('.bubble-wrap, .message-wrap').forEach(function (el) {
+      var distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceFromBottom < NEAR_BOTTOM_PX) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  }, 200);
+})();
+</script>
+"""
+
+
+# The model occasionally generates a complete, well-formed product link on
+# its own (having presumably picked up the "[Name](https://.../produkt/SKU)"
+# shape from context) — without protecting those first, the SKU substitution
+# below matches the SKU sitting inside that URL, and the name substitution
+# matches the name sitting inside that link text, each wrapping it AGAIN
+# and producing garbled nested links like "[[Name](url)](url/[SKU](url))".
+_EXISTING_LINK_RE = re.compile(r"\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)")
+
+
+def _linkify(text: str, products: list[dict]) -> str:
+    placeholders: dict[str, str] = {}
+
+    def protect(m: re.Match) -> str:
+        key = f"\x00LINK{len(placeholders)}\x00"
+        placeholders[key] = m.group(0)
+        return key
+
+    text = _EXISTING_LINK_RE.sub(protect, text)
+
+    text = _SKU_RE.sub(lambda m: f"[{m.group(0)}]({_PRODUCT_URL.format(sku=m.group(0))})", text)
+
+    names = sorted({p["name"] for p in products}, key=len, reverse=True)
+    name_to_sku = {p["name"]: p["sku"] for p in products}
+    for name in names:
+        sku = name_to_sku[name]
+        pattern = re.compile(rf"\b{re.escape(name)}\b")
+        text = pattern.sub(lambda m, sku=sku: f"[{m.group(0)}]({_PRODUCT_URL.format(sku=sku)})", text)
+
+    for key, original in placeholders.items():
+        text = text.replace(key, original)
+    return text
+
+
+# The fine-tuned model was trained heavily on comma-separated enumeration
+# prose ("X, Y og Z") and doesn't reliably switch to a bullet-list format
+# just from a system-prompt instruction — so runs of 3+ linked products
+# get reformatted into a markdown list here instead of at generation time.
+# The model also isn't consistent about *how* it phrases the enumeration
+# from one sample to the next (quoted vs. unquoted links, an inline price
+# after each one or not), so both an item and the separator between items
+# tolerate that variation rather than matching one exact phrasing.
+_ENUM_PRICE_RE = r"(?:\s*(?:til\s+)?\(?[\d.,]+\s*kr\.?\)?)?"
+_ENUM_ITEM_RE = rf"['\"]?\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)['\"]?{_ENUM_PRICE_RE}"
+_ENUM_SEP_RE = r"(?:,\s*|\s+og\s+)"
+_ENUM_RUN_RE = re.compile(rf"({_ENUM_ITEM_RE}(?:{_ENUM_SEP_RE}{_ENUM_ITEM_RE}){{2,}})\.?")
+
+
+def _bulletize_enumerations(text: str) -> str:
+    def repl(m: re.Match) -> str:
+        items = re.findall(_ENUM_ITEM_RE, m.group(1))
+        return "\n" + "\n".join(f"- {item.strip()}" for item in items) + "\n"
+
+    return _ENUM_RUN_RE.sub(repl, text)
+
+
+# Retrieval often returns more candidates than the model actually names in
+# its reply (e.g. "sofaer under 9000 kr" may retrieve 10 but the reply only
+# lists 4) — narrowing focus to what was actually mentioned keeps the "I
+# fokus" panel in sync with what the customer can see in the chat, instead
+# of showing extra products the reply never brought up.
+_MENTIONED_SKU_RE = re.compile(r"/produkt/(FRN-\d{4})")
+
+
+def _mentioned_products(rendered_text: str, retrieved: list[dict]) -> list[dict]:
+    mentioned_skus = dict.fromkeys(_MENTIONED_SKU_RE.findall(rendered_text))
+    by_sku = {p["sku"]: p for p in retrieved}
+    result = [by_sku[sku] for sku in mentioned_skus if sku in by_sku]
+    return result or retrieved
+
+
+def _reorder_by_mention(rendered_text: str, retrieved: list[dict]) -> list[dict]:
+    """Same idea as `_mentioned_products`, but for a pure follow-up that
+    didn't trigger a fresh retrieval ("which of these has the best
+    reviews?") — the reply may only re-mention one product by name, but
+    that's it picking a winner within the existing set, not narrowing what
+    the set *is*. Whatever got mentioned moves to the front; nothing drops.
+    """
+    mentioned_skus = list(dict.fromkeys(_MENTIONED_SKU_RE.findall(rendered_text)))
+    by_sku = {p["sku"]: p for p in retrieved}
+    mentioned = [by_sku[sku] for sku in mentioned_skus if sku in by_sku]
+    rest = [p for p in retrieved if p["sku"] not in mentioned_skus]
+    return mentioned + rest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.llm_backend import PodChatModel  # noqa: E402
+from catalog.product_format import products_to_context  # noqa: E402
+from config import BASE_MODEL_ID, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE  # noqa: E402
+from rag.retriever import ProductRetriever  # noqa: E402
+
+
+def build_app(model_name: str, base_url: str) -> gr.Blocks:
+    retriever = ProductRetriever()
+    model = PodChatModel(model=model_name, base_url=base_url)
+
+    # Single-user local POC, so a plain closure variable is enough to track
+    # "focus" (the product(s) the conversation is currently about) across
+    # turns — a multi-session deployment would need this in per-session
+    # gr.State instead.
+    focus_state: dict[str, list[dict]] = {"products": []}
+    # The customer may name a color before, after, or never relative to
+    # naming a product ("har I dem i mørkegrå" after already seeing some
+    # sofas). Rather than track "is this color valid right now", each
+    # product is just checked against its own real `colors` list whenever
+    # the panel is built — a stale remembered color simply won't match a
+    # product that doesn't come in it, so it silently stops showing without
+    # needing separate logic to detect the topic having moved on. Matching
+    # is case-insensitive because the catalog itself isn't consistent about
+    # casing for the same color across products ("Mørkegrå" vs "mørkegrå"),
+    # and the product's own exact string is what gets displayed either way.
+    color_state: dict[str, set[str]] = {"colors": set()}
+
+    def _focus_payload(products: list[dict], detected_colors_lower: set[str]) -> str:
+        return json.dumps([
+            {
+                "sku": p["sku"],
+                "name": p["name"],
+                "category": p["category"],
+                "price": p.get("discount_price") or p["normal_price"],
+                "normal_price": p["normal_price"],
+                "discount_percent": p.get("discount_percent") or 0,
+                "selected_color": next(
+                    (c for c in p.get("colors", []) if c.lower() in detected_colors_lower), None
+                ),
+            }
+            for p in products[:8]
+        ])
+
+    def respond(message: str, history: list[dict]):
+        # Keep showing the *previous* turn's focus while this reply streams —
+        # updating it to the full retrieved set immediately (before the model
+        # has said anything) made the panel flash a larger list that then
+        # shrank once narrowed to what was actually mentioned. It only
+        # changes once, at the end, straight to its final value.
+        previous_focus = focus_state["products"]
+        previous_colors = color_state["colors"]
+        retrieved = retriever.retrieve(message, top_k=RETRIEVAL_TOP_K, focus=previous_focus)
+        context = products_to_context(retrieved)
+        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
+        previous_focus_json = _focus_payload(previous_focus, previous_colors)
+
+        # Linkifying/bulletizing during streaming caused a visible flip once
+        # a product name or SKU completed mid-token — it showed as plain
+        # text while partial, then suddenly re-rendered as a link. Streaming
+        # the raw text avoids that; the fully-formatted version is swapped
+        # in as a single atomic update once the reply is done.
+        partial = ""
+        for token in model.chat_stream(system_prompt, message, history=history):
+            partial += token
+            yield partial, previous_focus_json
+
+        rendered = _bulletize_enumerations(_linkify(partial, retrieved))
+        yield rendered, previous_focus_json
+
+        if retrieved:
+            # A pure carryover follow-up ("which of these has the best
+            # reviews?") returns the exact same focus set it was given —
+            # nothing new was searched for, so a reply naming just one
+            # product is picking a winner, not narrowing the set itself.
+            is_pure_carryover = {p["sku"] for p in retrieved} == {p["sku"] for p in previous_focus}
+            if is_pure_carryover:
+                mentioned = _reorder_by_mention(rendered, retrieved)
+            else:
+                mentioned = _mentioned_products(rendered, retrieved)
+            detected_colors = retriever.detect_colors(message)
+            new_colors = {c.lower() for c in detected_colors} if detected_colors else previous_colors
+            focus_state["products"] = mentioned
+            color_state["colors"] = new_colors
+            yield rendered, _focus_payload(mentioned, new_colors)
+
+    def reset_focus() -> str:
+        focus_state["products"] = []
+        color_state["colors"] = set()
+        return _focus_payload([], set())
+
+    with gr.Blocks(title="Kjeldby Møbler", fill_width=True, fill_height=True) as demo:
+        focus_data = gr.Textbox(elem_id="focus-data", show_label=False, container=False)
+        chat = gr.ChatInterface(
+            fn=respond,
+            chatbot=gr.Chatbot(height="100%", buttons=[], feedback_options=None),
+            additional_outputs=[focus_data],
+            examples=[
+                "Hvilke farver fås sofabordet Skandinavisk Harmoni Coffee Table i?",
+                "Er kommoden FRN-0021 på lager, og hvor lang er garantien?",
+                "Følger der en madras med Skandinavisk Elegance Sengestativ?",
+            ],
+        )
+        # The trash/clear icon on the chatbot only clears the visible
+        # conversation by default — focus_state/color_state are separate
+        # server-side variables that need their own reset, and the frontend
+        # focus panel only follows the "focus-data" textbox, so that has to
+        # be pushed back to empty too for the panel to actually clear.
+        chat.chatbot.clear(fn=reset_focus, outputs=[focus_data])
+    return demo
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default=BASE_MODEL_ID, help="Model name as served by vLLM on the pod")
+    parser.add_argument("--base-url", default="http://localhost:8000/v1", help="vLLM OpenAI-compatible base URL (reach via SSH tunnel)")
+    parser.add_argument("--share", action="store_true")
+    args = parser.parse_args()
+
+    demo = build_app(args.model, args.base_url)
+    demo.launch(share=args.share, footer_links=[], head=PRODUCT_LINK_SCRIPT)
+
+
+if __name__ == "__main__":
+    main()

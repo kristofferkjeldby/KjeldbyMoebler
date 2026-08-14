@@ -1,0 +1,10 @@
+# Runs on your Mac: catalog/eval generation, RAG indexing, and the Gradio app
+# (which calls the fine-tuned model served on the RunPod GPU via vLLM, over
+# an SSH tunnel — no local model inference on the Mac).
+anthropic>=0.40.0
+requests>=2.31.0
+sentence-transformers>=3.0.0
+faiss-cpu>=1.8.0
+gradio>=6.0.0
+numpy>=1.26.0
+pytest>=8.0.0

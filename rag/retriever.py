@@ -277,11 +277,19 @@ class ProductRetriever:
         token-overlap fuzzy matching only when nothing matched exactly.
         """
         normalized_query = _normalize(query_lower)
+        # Space-padded so a name match only counts on a real word boundary —
+        # plain substring containment let short, generic single-word product
+        # names (e.g. a product literally named "Rustik") get an "exact"
+        # match against any query merely containing that stem as a prefix of
+        # a longer word (e.g. the adjective "rustikt"), which then won
+        # outright over the fuzzy-overlap tier and returned a spurious
+        # single-product match for what was really an open-ended query.
+        padded_query = f" {normalized_query} "
         exact: list[dict] = []
         exact_names: list[str] = []
         seen_names: set[str] = set()
         for name, _tokens, product in self._name_entries:
-            if name and name in normalized_query and name not in seen_names:
+            if name and f" {name} " in padded_query and name not in seen_names:
                 exact.append(product)
                 exact_names.append(name)
                 seen_names.add(name)

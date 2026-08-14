@@ -16,7 +16,7 @@ import requests
 
 
 class PodChatModel:
-    def __init__(self, model: str, base_url: str = "http://localhost:8000/v1", timeout: int = 300) -> None:
+    def __init__(self, model: str, base_url: str = "http://localhost:8000/v1", timeout: int | tuple[int, int] = 300) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout

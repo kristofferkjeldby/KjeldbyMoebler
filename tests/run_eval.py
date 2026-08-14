@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.llm_backend import PodChatModel  # noqa: E402
 from catalog.product_format import products_to_context  # noqa: E402
+from catalog.structured_client import with_retries  # noqa: E402
 from config import BASE_MODEL_ID, RAW_ANSWERS_PATH, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE, TEST_QUESTIONS_PATH  # noqa: E402
 from rag.retriever import ProductRetriever  # noqa: E402
 
@@ -40,22 +41,31 @@ def main() -> None:
         questions = questions[: args.limit]
 
     retriever = ProductRetriever()
-    model = PodChatModel(model=args.model, base_url=args.base_url)
+    # (connect, read) tuple, not a single float — a single float resets on every
+    # socket read, so a connection that's ESTABLISHED but stalled mid-response
+    # (observed: SSH-tunnel hang with zero bytes trickling) never times out.
+    model = PodChatModel(model=args.model, base_url=args.base_url, timeout=(10, 60))
 
     print(f"Running {len(questions)} questions through the pod-hosted model...")
     results = []
+    skipped = []
     for i, q in enumerate(questions, start=1):
         retrieved = retriever.retrieve(q["question"], top_k=RETRIEVAL_TOP_K)
         context = products_to_context(retrieved)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
-        answer = model.chat(system_prompt, q["question"])
+        try:
+            answer = with_retries(model.chat, system_prompt, q["question"])
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ! Q{q['id']} failed after retries, skipping: {exc}")
+            skipped.append(q["id"])
+            continue
 
         results.append({
             **q,
             "retrieved_skus": [p["sku"] for p in retrieved],
             "model_answer": answer,
         })
-        if i % 25 == 0:
+        if i % 10 == 0:
             print(f"  {i}/{len(questions)} done")
 
     with args.output.open("w") as f:
@@ -63,6 +73,8 @@ def main() -> None:
             f.write(json.dumps(r) + "\n")
 
     print(f"\nWrote {len(results)} answers to {args.output}")
+    if skipped:
+        print(f"Skipped {len(skipped)} questions after retries failed: {skipped}")
     print("Next: python -m tests.judge")
 
 

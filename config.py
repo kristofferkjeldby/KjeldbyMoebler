@@ -196,27 +196,49 @@ CATEGORY_PHRASES = {
 }
 CATEGORY_WORDS = {
     "sofa": {"sofa", "sofaer"},
-    "armchair": {"lænestol", "lænestole"},
+    # "lænestol" (lounge/recliner chair) is the formal term; "armstol" (arm
+    # chair, literal) is at least as common colloquially and was previously
+    # missing entirely — a real customer saying "armstole" got zero category
+    # match and silently fell back to weak semantic search.
+    "armchair": {"lænestol", "lænestole", "armstol", "armstole"},
     "loveseat": {"loveseat", "loveseater", "to-personers", "sofa"},
     "sectional": {"hjørnesofa", "hjørnesofaer"},
-    "dining_table": {"spisebord", "spiseborde"},
-    "coffee_table": {"sofabord", "sofaborde"},
+    # "spisestuebord" (dining ROOM table, more formal/common phrasing) was
+    # missing alongside the shorter "spisebord".
+    "dining_table": {"spisebord", "spiseborde", "spisestuebord", "spisestueborde"},
+    # "kaffebord" (coffee table, literal) is arguably the more common Danish
+    # term than "sofabord" (sofa table) and was previously missing entirely.
+    "coffee_table": {"sofabord", "sofaborde", "kaffebord", "kaffeborde"},
     "side_table": {"sidebord", "sideborde"},
     "console_table": {"konsolbord", "konsolborde"},
     "bed_frame": {"sengeramme", "sengerammer", "seng", "senge"},
     "nightstand": {"natbord", "natborde"},
     "dresser": {"kommode", "kommoder"},
     "wardrobe": {"garderobeskab", "garderobeskabe", "klædeskab", "klædeskabe"},
-    "bookshelf": {"bogreol", "bogreoler", "reol", "reoler"},
+    # "boghylde" (book shelf, literal) was missing alongside "bogreol"/"reol".
+    "bookshelf": {"bogreol", "bogreoler", "reol", "reoler", "boghylde", "boghylder"},
     "desk": {"skrivebord", "skriveborde"},
     "office_chair": {"kontorstol", "kontorstole"},
-    "dining_chair": {"spisebordsstol", "spisebordsstole"},
-    "bar_stool": {"barstol", "barstole"},
-    "tv_stand": {"tv-bord", "tv-borde"},
-    "outdoor_set": {"havemøbelsæt", "havemøbler"},
+    # "spisestol" (dining chair, shorter/more natural form) was missing
+    # alongside the more formal "spisebordsstol".
+    "dining_chair": {"spisebordsstol", "spisebordsstole", "spisestol", "spisestole"},
+    # "barstool" (English loanword spelling, common code-switch) is caught
+    # via the prefix-fallback tier against "barstooler" etc.
+    "bar_stool": {"barstol", "barstole", "barstool"},
+    # "tv-bord" is hyphenated and tokenizes to "tv" + "bord" — a query using
+    # the English loanword "tv-stand[s]" instead never matched either half.
+    # "stand"/"stands" catches it via the prefix-fallback tier.
+    "tv_stand": {"tv-bord", "tv-borde", "stand", "stands"},
+    # "terrassesæt" (patio/terrace set) was missing alongside "havemøbelsæt".
+    "outdoor_set": {"havemøbelsæt", "havemøbler", "terrassesæt"},
     "rug": {"tæppe", "tæpper"},
-    "lighting": {"belysning", "lampe", "lamper"},
-    "kitchen_unit": {"køkkenelement", "køkkenelementer", "køkkenskab", "køkkenskabe"},
+    # "lysarmatur"/"lysprodukt" (light fixture/product) were missing — NOT
+    # adding bare "lys" (light/pale), which collides with color names like
+    # "Lys Grå"/"Lys Egetræ" and would false-positive on color-only queries.
+    "lighting": {"belysning", "lampe", "lamper", "lysarmatur", "lysarmaturer", "lysprodukt", "lysprodukter"},
+    # "køkkenenhed" (kitchen unit, the literal translation of the category's
+    # own English name) was missing alongside "køkkenelement"/"køkkenskab".
+    "kitchen_unit": {"køkkenelement", "køkkenelementer", "køkkenskab", "køkkenskabe", "køkkenenhed", "køkkenenheder"},
 }
 EXTRA_CATEGORY_TRIGGER_WORDS = {
     "kitchen_unit": {"skab", "skabe", "element", "elementer"},

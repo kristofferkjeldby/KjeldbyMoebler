@@ -193,14 +193,19 @@ class ProductRetriever:
         # Danish is heavily inflected/compounded ("loveseater" = plural of
         # "loveseat", "belysningsprodukter" = "belysning" + "produkter") —
         # exact word equality misses these, so fall back to prefix matching
-        # (query token starts with a category word) as a last resort. Only
-        # applied when nothing more specific matched, so it can't override a
-        # genuine phrase/exact hit from a different category.
+        # (query token starts with a category word, i.e. word+suffix
+        # inflection) as a last resort. Danish compounds also prepend a
+        # modifier before the head noun ("trækommode" = "træ" + "kommode",
+        # "skindsofa" = "skind" + "sofa") — the head noun (the category) is
+        # the END of the compound there, so a suffix check catches that
+        # direction the prefix check can't. Only applied when nothing more
+        # specific matched, so it can't override a genuine phrase/exact hit
+        # from a different category.
         return {
             cat
             for cat, words in self._category_words.items()
             for word in words
-            if len(word) >= 4 and any(qw.startswith(word) for qw in query_words)
+            if len(word) >= 4 and any(qw.startswith(word) or qw.endswith(word) for qw in query_words)
         }
 
     def _detect_colors(self, query_words: set[str]) -> set[str]:

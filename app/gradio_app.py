@@ -40,8 +40,9 @@ _PRODUCT_URL = "https://kjeldbymobler.dk/produkt/{sku}"
 # directly).
 PRODUCT_LINK_SCRIPT = """
 <style>
-  #focus-data { position: absolute !important; width: 1px !important; height: 1px !important;
+  #focus-data, #chat-log-data { position: absolute !important; width: 1px !important; height: 1px !important;
     overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+  #copy-log-btn { align-self: flex-end !important; margin: 0 0 4px !important; flex: 0 0 auto !important; }
 
   /* Gradio's fill_height relies on flex-grow all the way down, which only
      resolves if html/body actually have a real height to grow into — by
@@ -137,6 +138,29 @@ document.addEventListener('click', function (e) {
     } catch (err) {}
   }, 600);
 })();
+
+// "Kopiér chat + fokus-log": reads the hidden #chat-log-data textbox (kept
+// current by respond()'s third yielded value, one block per turn) and
+// writes it straight to the clipboard — for pasting the whole exchange,
+// including what was actually shown/pooled at each step, somewhere else
+// for manual review. Requires the parent page's <iframe> to grant
+// clipboard-write (see app/landing_page.html) since this runs in a
+// cross-origin child frame.
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('#copy-log-btn, #copy-log-btn button');
+  if (!btn) return;
+  var el = document.querySelector('#chat-log-data textarea, #chat-log-data input');
+  var text = el ? el.value : '';
+  var label = btn.tagName === 'BUTTON' ? btn : btn.querySelector('button') || btn;
+  var original = label.textContent;
+  navigator.clipboard.writeText(text || '(ingen beskeder endnu)').then(function () {
+    label.textContent = '✓ Kopieret!';
+    setTimeout(function () { label.textContent = original; }, 1500);
+  }).catch(function () {
+    label.textContent = '⚠ Kunne ikke kopiere';
+    setTimeout(function () { label.textContent = original; }, 1500);
+  });
+});
 
 // Gradio's own autoscroll doesn't reliably keep up while streaming inside
 // this iframe layout, so the message list is force-scrolled to the bottom
@@ -300,6 +324,30 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             for p in products[:8]
         ])
 
+    # Plain-text conversation + focus-state log, one block per turn, for the
+    # "Kopiér chat + fokus-log" button below — lets manual testing paste the
+    # whole exchange (including what was actually shown/pooled, not just
+    # what's visible in the chat bubbles) somewhere else for review.
+    chat_log_state: dict[str, list[str]] = {"turns": []}
+
+    def _log_turn(turn_num: int, message: str, rendered: str, result, new_colors: set[str]) -> None:
+        shown_lines = "\n".join(f"    - {p['sku']}  {p['name']}" for p in result.shown) or "    (ingen)"
+        colors_line = ", ".join(sorted(new_colors)) or "(ingen)"
+        chat_log_state["turns"].append(
+            f"=== Tur {turn_num} ===\n"
+            f"Kunde: {message}\n"
+            f"Assistent: {rendered}\n"
+            f"\n"
+            f"Fokus efter denne tur:\n"
+            f"  Vist ({len(result.shown)} af {result.total_count} matches):\n"
+            f"{shown_lines}\n"
+            f"  Pool-størrelse (til næste turs indsnævring): {len(result.pool)}\n"
+            f"  Aktive farver: {colors_line}\n"
+        )
+
+    def _chat_log_text() -> str:
+        return "\n".join(chat_log_state["turns"])
+
     def respond(message: str, history: list[dict]):
         # Keep showing the *previous* turn's shown set while this reply
         # streams — updating it immediately (before the model has said
@@ -309,6 +357,7 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         previous_pool = pool_state["products"]
         previous_shown = shown_state["products"]
         previous_colors = color_state["colors"]
+        previous_log_text = _chat_log_text()
         result = retriever.retrieve(message, top_k=RETRIEVAL_TOP_K, focus=previous_pool)
         context = products_to_context(result.shown, result.total_count)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
@@ -322,7 +371,7 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         partial = ""
         for token in model.chat_stream(system_prompt, message, history=history):
             partial += token
-            yield partial, previous_shown_json
+            yield partial, previous_shown_json, previous_log_text
 
         rendered = _bulletize_enumerations(_linkify(partial, result.shown))
 
@@ -337,7 +386,7 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             see_all_url = CATEGORY_URL_BASE.format(category=category)
             rendered += f"\n\n[Se alle {result.total_count} {label} →]({see_all_url})"
 
-        yield rendered, previous_shown_json
+        yield rendered, previous_shown_json, previous_log_text
 
         if result.pool:
             pool_state["products"] = result.pool
@@ -358,20 +407,34 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             new_colors = {c.lower() for c in detected_colors} if detected_colors else previous_colors
             shown_state["products"] = mentioned
             color_state["colors"] = new_colors
-            yield rendered, _focus_payload(mentioned, new_colors)
+            _log_turn(len(chat_log_state["turns"]) + 1, message, rendered, result, new_colors)
+            yield rendered, _focus_payload(mentioned, new_colors), _chat_log_text()
+        else:
+            _log_turn(len(chat_log_state["turns"]) + 1, message, rendered, result, previous_colors)
+            yield rendered, previous_shown_json, _chat_log_text()
 
-    def reset_focus() -> str:
+    def reset_focus() -> tuple[str, str]:
         pool_state["products"] = []
         shown_state["products"] = []
         color_state["colors"] = set()
-        return _focus_payload([], set())
+        chat_log_state["turns"] = []
+        return _focus_payload([], set()), _chat_log_text()
 
     with gr.Blocks(title="Kjeldby Møbler", fill_width=True, fill_height=True) as demo:
         focus_data = gr.Textbox(elem_id="focus-data", show_label=False, container=False)
+        # Hidden carrier for the plain-text chat+focus log — read and copied
+        # to the clipboard by the "Kopiér chat + fokus-log" button below, via
+        # the same CSS-hide + JS-poll relay PRODUCT_LINK_SCRIPT already uses
+        # for focus-data (see its comment for why polling, not visible=False).
+        chat_log_data = gr.Textbox(elem_id="chat-log-data", show_label=False, container=False)
+        # Not wired to any server-side handler — PRODUCT_LINK_SCRIPT below
+        # handles its click entirely client-side (read #chat-log-data,
+        # write to clipboard).
+        gr.Button("📋 Kopiér chat + fokus-log", elem_id="copy-log-btn", size="sm")
         chat = gr.ChatInterface(
             fn=respond,
             chatbot=gr.Chatbot(height="100%", buttons=[], feedback_options=None),
-            additional_outputs=[focus_data],
+            additional_outputs=[focus_data, chat_log_data],
             examples=[
                 "Hvilke farver fås sofabordet Skandinavisk Harmoni Coffee Table i?",
                 "Er kommoden FRN-0021 på lager, og hvor lang er garantien?",
@@ -383,7 +446,7 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         # separate server-side variables that need their own reset, and the frontend
         # focus panel only follows the "focus-data" textbox, so that has to
         # be pushed back to empty too for the panel to actually clear.
-        chat.chatbot.clear(fn=reset_focus, outputs=[focus_data])
+        chat.chatbot.clear(fn=reset_focus, outputs=[focus_data, chat_log_data])
     return demo
 
 

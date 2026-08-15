@@ -275,6 +275,23 @@ EXTRA_CATEGORY_TRIGGER_WORDS = {
 # chars — so this stopword list is checked in addition to it.
 COLOR_WORD_STOPWORDS = {"med", "og", "til", "uden", "af", "som", "den", "det", "for"}
 
+# A bare generic term that spans several distinct catalog categories, none
+# of which is itself named that generic word — e.g. "stol" (chair) isn't a
+# catalog category on its own; it's the shared head-noun of four specific
+# compound categories (kontorstol/office_chair, spisebordsstol/dining_chair,
+# barstol/bar_stool, lænestol/armchair). Without this, "Hvilke stole har
+# I?" matched no category at all and fell through to semantic search,
+# which returned a noisy, largely-irrelevant mix (a desk, an outdoor set,
+# ...) since nothing in the retriever actually knew "stol" meant "any of
+# these four". When a query's ONLY signal is a bare disambiguation term —
+# no other filter at all — rag/retriever.py returns a category breakdown
+# (counts per category) instead of guessing which subtype to show
+# products from; see RetrievalResult.category_breakdown.
+CATEGORY_DISAMBIGUATION_TERMS: dict[str, set[str]] = {
+    "stol": {"office_chair", "dining_chair", "bar_stool", "armchair"},
+    "stole": {"office_chair", "dining_chair", "bar_stool", "armchair"},
+}
+
 OUT_OF_STOCK_PHRASES = ("udsolgt", "ikke på lager", "ikke tilgængelig")
 IN_STOCK_PHRASES = ("på lager", "tilgængelig", "tilgængelige")
 CHEAP_PHRASES = ("billigst", "billigste", "laveste pris")

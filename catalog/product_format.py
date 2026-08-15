@@ -54,6 +54,31 @@ CATEGORY_LABELS = {
     "kitchen_unit": "køkkenelement",
 }
 
+CATEGORY_LABELS_PLURAL = {
+    "sofa": "sofaer",
+    "armchair": "lænestole",
+    "loveseat": "to-personers sofaer",
+    "sectional": "hjørnesofaer",
+    "dining_table": "spiseborde",
+    "coffee_table": "sofaborde",
+    "side_table": "sideborde",
+    "console_table": "konsolborde",
+    "bed_frame": "sengerammer",
+    "nightstand": "natborde",
+    "dresser": "kommoder",
+    "wardrobe": "garderobeskabe",
+    "bookshelf": "bogreoler",
+    "desk": "skriveborde",
+    "office_chair": "kontorstole",
+    "dining_chair": "spisebordsstole",
+    "bar_stool": "barstole",
+    "tv_stand": "tv-borde",
+    "outdoor_set": "havemøbelsæt",
+    "rug": "tæpper",
+    "lighting": "belysning",
+    "kitchen_unit": "køkkenelementer",
+}
+
 ROOM_LABELS = {
     "living_room": "stue",
     "bedroom": "soveværelse",
@@ -189,6 +214,30 @@ def products_to_context(products: list[dict], total_count: int | None = None) ->
             f"med et link til at se hele listen.)"
         )
     return blocks
+
+
+def category_breakdown_to_context(breakdown: dict[str, int]) -> str:
+    """Render a RetrievalResult.category_breakdown as system-prompt context.
+
+    Used when the customer's query was a bare generic term spanning several
+    distinct catalog categories ("stol" -> office_chair/dining_chair/
+    bar_stool/armchair — see config.py's CATEGORY_DISAMBIGUATION_TERMS) with
+    no other signal to narrow by. No individual products are given — the
+    model should ask which type the customer means, not guess. The actual
+    per-category links are appended deterministically by app/gradio_app.py
+    after generation, same reliability reasoning as the "see all" link.
+    """
+    lines = "\n".join(
+        f"- {CATEGORY_LABELS_PLURAL.get(cat, cat)}: {count} produkter"
+        for cat, count in sorted(breakdown.items(), key=lambda item: -item[1])
+    )
+    return (
+        "Kundens spørgsmål dækker flere forskellige kategorier, ikke én bestemt. "
+        "Vis IKKE individuelle produkter — spørg i stedet kunden hvilken type de "
+        "leder efter, og nævn kategorierne (med antal):\n\n"
+        f"{lines}\n\n"
+        "Opfind ikke andre kategorier end dem, der er nævnt her."
+    )
 
 
 def product_to_embedding_text(product: dict) -> str:

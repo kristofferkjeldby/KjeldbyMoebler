@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.llm_backend import PodChatModel  # noqa: E402
-from catalog.product_format import products_to_context  # noqa: E402
+from catalog.product_format import category_breakdown_to_context, products_to_context  # noqa: E402
 from config import BASE_MODEL_ID, CATALOG_PATH, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE  # noqa: E402
 from rag.retriever import ProductRetriever  # noqa: E402
 
@@ -64,7 +64,11 @@ def run_journey(name: str, questions: list[str], retriever: ProductRetriever, mo
         result = retriever.retrieve(question, top_k=RETRIEVAL_TOP_K, focus=focus)
         if result.pool:
             focus = result.pool  # full matching set, not just what's shown — see RetrievalResult
-        context = products_to_context(result.shown, result.total_count)
+        context = (
+            category_breakdown_to_context(result.category_breakdown)
+            if result.category_breakdown
+            else products_to_context(result.shown, result.total_count)
+        )
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
         answer = model.chat(system_prompt, question, history=history)
 

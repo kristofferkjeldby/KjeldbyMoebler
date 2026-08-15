@@ -39,6 +39,7 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from catalog.product_format import product_to_embedding_text  # noqa: E402
 from config import (  # noqa: E402
+    CATEGORY_DISAMBIGUATION_TERMS,
     CATEGORY_PHRASES,
     CATEGORY_WORDS,
     CHEAP_PHRASES,
@@ -77,6 +78,14 @@ class RetrievalResult:
     shown: list[dict]
     pool: list[dict]
     total_count: int
+    # Set only when the query's sole signal was a bare generic term that
+    # spans several distinct catalog categories (config.py's
+    # CATEGORY_DISAMBIGUATION_TERMS, e.g. "stol" -> office_chair /
+    # dining_chair / bar_stool / armchair) with no other filter at all —
+    # {category: count}. When set, `shown`/`pool` are empty: the caller
+    # should present the category choice (with a per-category link)
+    # instead of individual products. See app/gradio_app.py.
+    category_breakdown: dict[str, int] | None = None
 
 
 def _split_shown(matches: list[dict]) -> RetrievalResult:
@@ -237,6 +246,17 @@ class ProductRetriever:
             for word in words
             if len(word) >= 4 and any(qw.startswith(word) or qw.endswith(word) for qw in query_words)
         }
+
+    @staticmethod
+    def _detect_disambiguation_categories(query_words: set[str]) -> set[str]:
+        """A bare generic term ("stol") that's the shared head-noun of
+        several specific catalog categories, none of which is itself named
+        that word — see CATEGORY_DISAMBIGUATION_TERMS in config.py.
+        """
+        result: set[str] = set()
+        for word in query_words:
+            result |= CATEGORY_DISAMBIGUATION_TERMS.get(word, set())
+        return result
 
     def _detect_colors(self, query_words: set[str]) -> set[str]:
         matched_words = set(self._color_word_to_colors) & query_words
@@ -484,6 +504,38 @@ class ProductRetriever:
         price_sort = self._detect_price_sort(query_lower)
         price_range = self._detect_price_threshold(query_lower)
         dimension = self._detect_dimension(query_lower)
+
+        # A bare generic term ("Hvilke stole har I?") that spans several
+        # distinct catalog categories — checked only when `categories` is
+        # still empty, since a specific compound word like "kontorstol"
+        # should search directly, never disambiguate.
+        disambiguation_categories = self._detect_disambiguation_categories(query_words) if not categories else set()
+        other_signal = bool(
+            colors or store or stock_filter is not None
+            or price_sort is not None or price_range is not None or dimension is not None
+        )
+
+        if disambiguation_categories:
+            if not other_signal:
+                # Nothing else to narrow by — rather than guess a subtype
+                # (or fall through to semantic search, which has no notion
+                # of "stol" and returns unrelated noise), tell the caller
+                # which categories actually matched and how many products
+                # are in each, so the customer can be asked to pick one
+                # instead of being shown an arbitrary blend.
+                counts = {
+                    cat: sum(1 for p in self.products if p["category"] == cat)
+                    for cat in disambiguation_categories
+                }
+                return RetrievalResult(
+                    shown=[], pool=[], total_count=sum(counts.values()), category_breakdown=counts
+                )
+            # A color/price/store alongside "stole" is enough specificity
+            # to just search the union of categories directly instead of
+            # asking first — but the union still has to scope the search,
+            # or "sorte stole" would silently search "sort, any category"
+            # across the whole catalog instead of just chairs.
+            categories = disambiguation_categories
 
         any_filter = bool(
             categories or colors or store or stock_filter is not None

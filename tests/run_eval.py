@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.llm_backend import PodChatModel  # noqa: E402
-from catalog.product_format import products_to_context  # noqa: E402
+from catalog.product_format import category_breakdown_to_context, products_to_context  # noqa: E402
 from catalog.structured_client import with_retries  # noqa: E402
 from config import BASE_MODEL_ID, RAW_ANSWERS_PATH, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE, TEST_QUESTIONS_PATH  # noqa: E402
 from rag.retriever import ProductRetriever  # noqa: E402
@@ -51,7 +51,11 @@ def main() -> None:
     skipped = []
     for i, q in enumerate(questions, start=1):
         result = retriever.retrieve(q["question"], top_k=RETRIEVAL_TOP_K)
-        context = products_to_context(result.shown, result.total_count)
+        context = (
+            category_breakdown_to_context(result.category_breakdown)
+            if result.category_breakdown
+            else products_to_context(result.shown, result.total_count)
+        )
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
         try:
             answer = with_retries(model.chat, system_prompt, q["question"])

@@ -301,3 +301,49 @@ def test_hvad_med_idiom_does_not_spuriously_match_unrelated_products(retriever):
         f"expected no gray+red overlap, got {red.total_count}: "
         f"{[(p['sku'], p['colors']) for p in red.shown]}"
     )
+
+
+# --- category disambiguation: a bare generic term spanning several ------
+# --- distinct catalog categories -----------------------------------------
+#
+# "Hvilke stole har I?" ("which chairs do you have?") — "stol" isn't a
+# catalog category on its own; it's the shared head-noun of four specific
+# compound categories. Reported bug: this fell through to semantic search
+# (no category matched at all) and returned a noisy, largely-irrelevant
+# mix (a desk, an outdoor set, ...). Fix: return a category breakdown
+# instead of guessing a subtype.
+
+def test_bare_disambiguation_term_returns_category_breakdown_not_products(retriever):
+    result = retriever.retrieve("Hvilke stole har I ?", top_k=8, focus=[])
+
+    assert result.shown == []
+    assert result.pool == []
+    assert set(result.category_breakdown) == {"office_chair", "dining_chair", "bar_stool", "armchair"}
+    assert result.total_count == sum(result.category_breakdown.values())
+    assert all(count > 0 for count in result.category_breakdown.values())
+
+
+def test_disambiguation_breakdown_counts_match_true_catalog_counts(retriever):
+    result = retriever.retrieve("Hvilke stole har I ?", top_k=8, focus=[])
+    for category, count in result.category_breakdown.items():
+        true_count = sum(1 for p in retriever.products if p["category"] == category)
+        assert count == true_count, f"{category}: reported {count}, actual {true_count}"
+
+
+def test_specific_compound_category_word_bypasses_disambiguation(retriever):
+    # "kontorstol" (office chair) is itself a specific, unambiguous
+    # category word — it must search directly, not trigger disambiguation
+    # just because it happens to contain "stol".
+    result = retriever.retrieve("Hvilke kontorstole har I ?", top_k=8, focus=[])
+    assert result.category_breakdown is None
+    assert all(p["category"] == "office_chair" for p in result.shown)
+
+
+def test_disambiguation_term_plus_other_filter_searches_directly(retriever):
+    # Adding any other signal (a color here) is enough specificity to just
+    # search the union of categories directly instead of asking first.
+    result = retriever.retrieve("Har I sorte stole ?", top_k=8, focus=[])
+    assert result.category_breakdown is None
+    assert all(
+        p["category"] in {"office_chair", "dining_chair", "bar_stool", "armchair"} for p in result.shown
+    )

@@ -6,7 +6,13 @@ conversion) — reach it from the Mac through an SSH tunnel:
     ssh -f -N -L 8000:localhost:8000 -p <port> -i <key> root@<pod-ip>
 
 Shared by the Gradio app and the eval runner so both use identical generation
-settings.
+settings. Default temperature is 0.0 (greedy) — this is retrieval-grounded
+factual QA, not creative generation, so deterministic decoding is strictly
+preferable: it removes sampling as a source of hallucination/inconsistency
+(observed directly during eval: the same retrieved context producing a
+different stock number, or answer phrasing, across otherwise-identical
+runs) and makes eval-to-eval comparisons attributable to actual code
+changes instead of sampling noise.
 """
 from __future__ import annotations
 
@@ -23,7 +29,7 @@ class PodChatModel:
 
     def chat(
         self, system_prompt: str, user_message: str, history: list[dict] | None = None,
-        max_tokens: int = 512, temperature: float = 0.2,
+        max_tokens: int = 512, temperature: float = 0.0,
     ) -> str:
         messages = [{"role": "system", "content": system_prompt}, *(history or []), {"role": "user", "content": user_message}]
         response = requests.post(
@@ -41,7 +47,7 @@ class PodChatModel:
 
     def chat_stream(
         self, system_prompt: str, user_message: str, history: list[dict] | None = None,
-        max_tokens: int = 512, temperature: float = 0.2,
+        max_tokens: int = 512, temperature: float = 0.0,
     ):
         messages = [{"role": "system", "content": system_prompt}, *(history or []), {"role": "user", "content": user_message}]
         response = requests.post(

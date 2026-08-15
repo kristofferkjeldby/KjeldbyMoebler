@@ -261,6 +261,18 @@
     gap: 12px;
   }
   .table-modal-head h3 { margin: 0; font-size: 1.3rem; }
+  .filter-clear-btn {
+    margin-left: 10px;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-alt);
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .filter-clear-btn:hover { background: var(--border); color: var(--ink); }
   .table-modal-head .count { color: var(--ink-soft); font-size: 0.85rem; }
   .table-modal-wrap { padding: 12px 28px 28px; overflow-x: auto; }
   .product-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -855,10 +867,33 @@
     return p.discount_price || p.normal_price;
   }
 
-  function openCategoryModal(category) {
-    categoryModalSkus = Object.keys(PRODUCTS).filter(sku => PRODUCTS[sku].category === category);
+  // colorFilter (optional): array of catalog color strings from the chat's
+  // "[Se alle N <kategori> ->]" link — when the chat narrowed by color
+  // ("10 red office chairs"), the link carries those exact colors so the
+  // modal opens pre-filtered to the same 10, instead of the full
+  // unfiltered category the label would otherwise misleadingly promise.
+  // Matched case-insensitively since the retriever's own color detection
+  // is also case-insensitive.
+  function openCategoryModal(category, colorFilter) {
+    const filterLower = colorFilter && colorFilter.length ? colorFilter.map(c => c.toLowerCase()) : null;
+    categoryModalSkus = Object.keys(PRODUCTS).filter(sku => {
+      const p = PRODUCTS[sku];
+      if (p.category !== category) return false;
+      if (!filterLower) return true;
+      return (p.colors || []).some(c => filterLower.includes(c.toLowerCase()));
+    });
     categorySort = { key: "name", dir: 1 };
-    document.getElementById("category-modal-title").textContent = CATEGORY_LABELS[category] || category;
+    const label = CATEGORY_LABELS[category] || category;
+    const titleEl = document.getElementById("category-modal-title");
+    const clearBtnHtml = filterLower
+      ? ' <button class="filter-clear-btn" id="category-modal-clear-filter" type="button">✕ Nulstil farvefilter</button>'
+      : "";
+    titleEl.innerHTML = filterLower
+      ? label.charAt(0).toUpperCase() + label.slice(1) + " — " + colorFilter.join(", ") + clearBtnHtml
+      : label.charAt(0).toUpperCase() + label.slice(1);
+    if (filterLower) {
+      document.getElementById("category-modal-clear-filter").addEventListener("click", () => openCategoryModal(category));
+    }
     renderCategoryTable();
     document.getElementById("category-modal").classList.add("open");
   }
@@ -1012,7 +1047,7 @@
       openProductModal(e.data.sku);
     }
     if (e.data && e.data.type === "kjeldby-open-category" && e.data.category) {
-      openCategoryModal(e.data.category);
+      openCategoryModal(e.data.category, e.data.colors || null);
     }
     if (e.data && e.data.type === "kjeldby-focus-update" && Array.isArray(e.data.products)) {
       liveFocusProducts = e.data.products;

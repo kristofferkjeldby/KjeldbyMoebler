@@ -16,6 +16,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import gradio as gr
 
@@ -117,12 +118,25 @@ document.addEventListener('click', function (e) {
   }
   // "Se alle N <kategori> ->" link appended after a reply that only showed
   // the top SHOWN_MAX_RESULTS of a larger match — opens the same
-  // category-table modal the landing page's category cards use.
+  // category-table modal the landing page's category cards use. When the
+  // shown set was narrowed by color (e.g. "10 red office chairs"), the
+  // link carries those exact colors as a ?farver= param so the modal opens
+  // pre-filtered to the same count the link's label promised, instead of
+  // the full unfiltered category.
   var catA = e.target.closest('a[href*="kjeldbymobler.dk/kategori/"]');
   if (catA) {
     e.preventDefault();
-    var category = catA.getAttribute('href').split('/kategori/')[1];
-    window.parent.postMessage({type: 'kjeldby-open-category', category: category}, '*');
+    var rest = catA.getAttribute('href').split('/kategori/')[1];
+    var parts = rest.split('?');
+    var category = parts[0];
+    var colors = null;
+    if (parts[1]) {
+      var farverParam = new URLSearchParams(parts[1]).get('farver');
+      if (farverParam) {
+        try { colors = JSON.parse(farverParam); } catch (err) {}
+      }
+    }
+    window.parent.postMessage({type: 'kjeldby-open-category', category: category, colors: colors}, '*');
   }
 });
 
@@ -377,6 +391,13 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         previous_colors = color_state["colors"]
         previous_log_text = _chat_log_text()
         result = retriever.retrieve(message, top_k=RETRIEVAL_TOP_K, focus=previous_pool)
+        # Computed once up front (not just when narrowing focus at the end)
+        # so the "see all" link below can carry the same active color
+        # filter into the category modal — otherwise "Se alle 10 røde
+        # kontorstole" would open the modal to all 75 unfiltered, a mismatch
+        # between what the link promises and what clicking it shows.
+        detected_colors = retriever.detect_colors(message)
+        new_colors = {c.lower() for c in detected_colors} if detected_colors else previous_colors
         context = (
             category_breakdown_to_context(result.category_breakdown)
             if result.category_breakdown
@@ -413,6 +434,13 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             category = result.shown[0]["category"]
             label = CATEGORY_LABELS.get(category, category)
             see_all_url = CATEGORY_URL_BASE.format(category=category)
+            # Only attach a color filter freshly named THIS turn, not one
+            # merely carried over from a prior turn (new_colors falls back
+            # to previous_colors when nothing new was detected) — a stale
+            # color from an earlier, unrelated topic could otherwise get
+            # attached to a category it was never actually filtered by.
+            if detected_colors:
+                see_all_url += "?farver=" + quote(json.dumps(sorted(detected_colors)))
             rendered += f"\n\n[Se alle {result.total_count} {label} →]({see_all_url})"
 
         yield rendered, previous_shown_json, previous_log_text
@@ -442,8 +470,6 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
                 mentioned = _reorder_by_mention(rendered, result.shown)
             else:
                 mentioned = _mentioned_products(rendered, result.shown)
-            detected_colors = retriever.detect_colors(message)
-            new_colors = {c.lower() for c in detected_colors} if detected_colors else previous_colors
             shown_state["products"] = mentioned
             color_state["colors"] = new_colors
             _log_turn(len(chat_log_state["turns"]) + 1, message, rendered, result, new_colors)

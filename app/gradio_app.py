@@ -240,7 +240,15 @@ def _linkify(text: str, products: list[dict]) -> str:
 # tolerate that variation rather than matching one exact phrasing.
 _ENUM_PRICE_RE = r"(?:\s*(?:til\s+)?\(?[\d.,]+\s*kr\.?\)?)?"
 _ENUM_ITEM_RE = rf"['\"]?\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)['\"]?{_ENUM_PRICE_RE}"
-_ENUM_SEP_RE = r"(?:,\s*|\s+og\s+)"
+# Order matters: the combined "X, Y, og Z" serial-comma form (comma
+# immediately followed by "og") must be tried before the bare comma
+# alternative, or the bare comma matches first, leaves "og [Next Item]"
+# behind (neither remaining alternative can pick that up — "og" itself
+# isn't the required "[" an item starts with, and the leading whitespace
+# a bare " og " match needs was already consumed by the comma's own
+# trailing \s*), and the whole run — and every item after that point —
+# silently falls out of the match instead of getting bulletized.
+_ENUM_SEP_RE = r"(?:,\s+og\s+|,\s*|\s+og\s+)"
 _ENUM_RUN_RE = re.compile(rf"({_ENUM_ITEM_RE}(?:{_ENUM_SEP_RE}{_ENUM_ITEM_RE}){{2,}})\.?")
 
 

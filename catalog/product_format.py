@@ -167,10 +167,26 @@ def products_to_context(products: list[dict], total_count: int | None = None) ->
         return "(ingen matchende produkter fundet)"
     blocks = "\n\n".join(product_to_context_block(p) for p in products)
     if total_count and total_count > len(products):
+        # Danish grammar signals completeness by default: "Vi har følgende
+        # sofaer:" or "Vi har sofaer i følgende farver:" reads as an
+        # exhaustive list to a Danish speaker, even though it's just the
+        # top few by relevance. That's true not only for product-name
+        # enumerations but for ANY claim drawn from this subset — colors,
+        # materials, price range, etc. all only reflect what's in these
+        # {len(products)} products, not the full {total_count}. Spelling
+        # out the exact corrected phrasing (not just "mention there are
+        # more") because the model reliably needs the concrete template,
+        # not an abstract instruction, to actually produce it.
         blocks += (
-            f"\n\n(Bemærk: der er i alt {total_count} produkter, der matcher — kun de "
-            f"{len(products)} mest relevante er vist her. Fortæl kunden at der findes "
-            f"flere, og at de kan se hele listen.)"
+            f"\n\n(Bemærk: dette er kun de {len(products)} mest relevante ud af i alt "
+            f"{total_count} matchende produkter — IKKE hele listen. Alt du siger ud fra "
+            f"dette udvalg (produktnavne, farver, priser, materialer osv.) er kun et "
+            f"udpluk, ikke en komplet oversigt. På dansk betyder en sætning som 'Vi har "
+            f"følgende sofaer:' eller 'Vi har sofaer i følgende farver:' at listen er "
+            f"komplet — det må du ALDRIG skrive her. Brug i stedet 'Vi har blandt andet "
+            f"følgende sofaer:' eller 'Vi har blandt andet sofaer i følgende farver:' "
+            f"(tilpasset til produktkategorien), og fortæl kunden at der findes flere, "
+            f"med et link til at se hele listen.)"
         )
     return blocks
 

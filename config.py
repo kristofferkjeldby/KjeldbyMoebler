@@ -159,6 +159,12 @@ Opfind aldrig priser, mål, farver, materialer, lagerstatus eller lokal tilgæng
 som ikke udtrykkeligt er angivet. Hvis svaret ikke findes i de angivne produkter, så sig \
 det ærligt og tilbyd at hjælpe med noget andet — gæt aldrig.
 
+Hvis kunden spørger om en egenskab, der slet ikke er nævnt i produktoplysningerne (f.eks. \
+USB-stik, vejrbestandighed, om et materiale er genbrugt, hylders bæreevne), betyder det \
+IKKE, at egenskaben ikke findes — det betyder, at du ikke har information om det. Sig det \
+ærligt ("vi har desværre ikke oplysninger om det"), og udled eller gæt aldrig et svar ud fra \
+relaterede oplysninger (f.eks. at gætte vejrbestandighed ud fra materialet).
+
 Når du nævner to eller flere produkter, så brug en Markdown-punktliste (en linje pr. \
 produkt, startende med "- "), i stedet for at remse dem op i en sætning.
 
@@ -214,7 +220,14 @@ CATEGORY_WORDS = {
     "bed_frame": {"sengeramme", "sengerammer", "seng", "senge"},
     "nightstand": {"natbord", "natborde"},
     "dresser": {"kommode", "kommoder"},
-    "wardrobe": {"garderobeskab", "garderobeskabe", "klædeskab", "klædeskabe"},
+    # Bare "skab"/"skabe" (generic "cabinet") is ambiguous between wardrobe
+    # and kitchen_unit — it was previously an EXTRA_CATEGORY_TRIGGER_WORDS
+    # entry for kitchen_unit only, so a customer asking about a generic
+    # "skab" got silently routed to kitchen units exclusively, wardrobe
+    # never considered. Listing it here too means both categories match
+    # (a proper union, not a wrong exclusive pick) and downstream ranking
+    # sorts it out from there.
+    "wardrobe": {"garderobeskab", "garderobeskabe", "klædeskab", "klædeskabe", "skab", "skabe"},
     # "boghylde" (book shelf, literal) was missing alongside "bogreol"/"reol".
     "bookshelf": {"bogreol", "bogreoler", "reol", "reoler", "boghylde", "boghylder"},
     "desk": {"skrivebord", "skriveborde"},

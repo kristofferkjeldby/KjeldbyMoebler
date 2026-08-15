@@ -264,6 +264,16 @@ CATEGORY_WORDS = {
 EXTRA_CATEGORY_TRIGGER_WORDS = {
     "kitchen_unit": {"skab", "skabe", "element", "elementer"},
 }
+# Danish grammatical connectors that show up constantly inside compound
+# catalog color descriptions ("Sort MED grå detaljer", "Hvid MED guld") but
+# aren't themselves color/material terms — indexing them as color-trigger
+# words meant an unrelated customer phrase merely containing one of them
+# (e.g. "Hvad MED rød?", the idiom "what about red?") spuriously matched
+# every catalog color containing that connector as a substring word,
+# including products with no real relation to what was asked. The plain
+# length>=3 guard alone doesn't exclude "med" (with) — it's exactly 3
+# chars — so this stopword list is checked in addition to it.
+COLOR_WORD_STOPWORDS = {"med", "og", "til", "uden", "af", "som", "den", "det", "for"}
 
 OUT_OF_STOCK_PHRASES = ("udsolgt", "ikke på lager", "ikke tilgængelig")
 IN_STOCK_PHRASES = ("på lager", "tilgængelig", "tilgængelige")

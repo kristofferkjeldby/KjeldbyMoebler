@@ -264,3 +264,40 @@ def test_pool_is_not_narrowed_by_what_was_merely_mentioned(retriever):
     # This is the caller-contract assertion this test exists to document:
     # app/gradio_app.py must pass `result.pool` (never a mentioned-subset)
     # as next turn's focus for the wide-list feature to work correctly.
+
+
+# --- regression: "med" (Danish "with") indexed as a spurious color word ---
+#
+# Found via manual testing: "Hvad med rød?" ("what about red?", an idiom —
+# "med" isn't invoking the preposition here) was spuriously matching
+# products with no relation to red at all. Root cause: catalog color
+# strings are compound Danish descriptions ("Sort med grå detaljer" =
+# "Black with gray details"), and the color-word index only excluded
+# words shorter than 3 characters — "med" (3 chars) slipped through and
+# got indexed as if it were a real color term, since it appears in nearly
+# every compound color description. Any query merely containing "med" for
+# an unrelated reason then spuriously matched every catalog color
+# containing that word.
+
+def test_generic_connector_word_is_not_indexed_as_a_color(retriever):
+    assert "med" not in retriever._color_word_to_colors, (
+        "'med' (Danish \"with\") is a generic connector, not a color/material "
+        "term — indexing it lets an unrelated query spuriously match every "
+        "catalog color string that happens to contain the word 'med'"
+    )
+
+
+def test_hvad_med_idiom_does_not_spuriously_match_unrelated_products(retriever):
+    # The exact reported scenario: narrow an existing pool to gray sofas,
+    # then ask "what about red?" — none of the gray sofas are also red, so
+    # this must correctly report zero matches, not resurface an unrelated
+    # gray-and-non-red product just because its color string contains "med".
+    broad = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[])
+    gray = retriever.retrieve("Har I dem i grå?", top_k=8, focus=broad.pool)
+    assert gray.total_count > 0  # sanity: the fixture scenario still applies
+
+    red = retriever.retrieve("Hvad med rød ?", top_k=8, focus=gray.pool)
+    assert red.total_count == 0, (
+        f"expected no gray+red overlap, got {red.total_count}: "
+        f"{[(p['sku'], p['colors']) for p in red.shown]}"
+    )

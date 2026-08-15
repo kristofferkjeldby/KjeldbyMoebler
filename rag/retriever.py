@@ -42,6 +42,7 @@ from config import (  # noqa: E402
     CATEGORY_PHRASES,
     CATEGORY_WORDS,
     CHEAP_PHRASES,
+    COLOR_WORD_STOPWORDS,
     CROSS_ENCODER_MODEL_NAME,
     DIM_KEYWORDS,
     DIMENSION_TOLERANCE_CM,
@@ -202,7 +203,7 @@ class ProductRetriever:
         for product in self.products:
             for color in product["colors"]:
                 for word in _words(color):
-                    if len(word) < 3 or word in all_category_trigger_words:
+                    if len(word) < 3 or word in all_category_trigger_words or word in COLOR_WORD_STOPWORDS:
                         continue
                     self._color_word_to_colors.setdefault(word, set()).add(color)
 

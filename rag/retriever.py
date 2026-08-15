@@ -505,17 +505,28 @@ class ProductRetriever:
         price_range = self._detect_price_threshold(query_lower)
         dimension = self._detect_dimension(query_lower)
 
-        # A bare generic term ("Hvilke stole har I?") that spans several
-        # distinct catalog categories — checked only when `categories` is
-        # still empty, since a specific compound word like "kontorstol"
-        # should search directly, never disambiguate.
-        disambiguation_categories = self._detect_disambiguation_categories(query_words) if not categories else set()
+        # A bare generic term ("Hvilke stole har I?", "Jeg skal bruge en
+        # sofa") that spans several distinct catalog categories. For
+        # "stol"/"bord" the bare word matches no category at all
+        # (`categories` is empty). "sofa" is different: it's ALSO one of
+        # the sofa-family's own literal category words (CATEGORY_WORDS),
+        # so the exact-match tier alone already returns {"sofa"} — not
+        # empty. The `issubset(...) and len(...) <= 1` check below still
+        # recognizes that as "nothing MORE SPECIFIC than the generic word
+        # itself was named": a phrase-tier match naming a sibling directly
+        # ("hjørnesofa") changes `categories` to something that isn't a
+        # same-or-smaller subset of just this word's own family, so that
+        # case is correctly left to search directly instead of asking.
+        disambiguation_categories = self._detect_disambiguation_categories(query_words)
+        is_pure_disambiguation = bool(disambiguation_categories) and categories.issubset(
+            disambiguation_categories
+        ) and len(categories) <= 1
         other_signal = bool(
             colors or store or stock_filter is not None
             or price_sort is not None or price_range is not None or dimension is not None
         )
 
-        if disambiguation_categories:
+        if is_pure_disambiguation:
             if not other_signal:
                 # Nothing else to narrow by — rather than guess a subtype
                 # (or fall through to semantic search, which has no notion

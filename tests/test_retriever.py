@@ -27,14 +27,22 @@ from config import SHOWN_MAX_RESULTS, STORES  # noqa: E402
 from rag.retriever import ProductRetriever  # noqa: E402
 
 # category key -> a real Danish phrase a customer would actually type.
+# Deliberately excludes "sofa" — as of the category-disambiguation feature,
+# a bare "sofaer" query is no longer a single-category lookup (see the
+# "category disambiguation" section below); "hjørnesofaer" (sectional)
+# stands in wherever these tests need a large, definitely-unambiguous
+# category for pool/priority mechanics.
 CATEGORY_QUERIES = {
-    "sofa": "sofaer",
     "sectional": "hjørnesofaer",
     "armchair": "lænestole",
     "dining_table": "spiseborde",
     "bed_frame": "sengerammer",
     "bookshelf": "reoler",
 }
+
+# The three categories a bare "sofa"/"sofaer" query disambiguates across —
+# see config.py's CATEGORY_DISAMBIGUATION_TERMS.
+SOFA_FAMILY = {"sofa", "sectional", "loveseat"}
 
 # A color common enough to have real matches across most categories.
 COMMON_COLOR_WORD = "sorte"
@@ -64,9 +72,12 @@ def test_category_only_returns_matching_products(retriever, category, phrase):
 
 
 def test_category_only_caps_at_shown_max(retriever):
-    # "sofa" alone is a large category (60+ products) — confirms the cap is
-    # actually enforced, not just coincidentally under it for small ones.
-    results = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[]).shown
+    # "hjørnesofa" (sectional) alone is a large category (60+ products) —
+    # confirms the cap is actually enforced, not just coincidentally under
+    # it for small ones. Not "sofaer": that's a disambiguation term now
+    # (see the "category disambiguation" section below) and returns a
+    # category breakdown instead of a capped product list.
+    results = retriever.retrieve("Hvilke hjørnesofaer har I?", top_k=8, focus=[]).shown
     assert len(results) == SHOWN_MAX_RESULTS
 
 
@@ -103,9 +114,12 @@ def test_category_plus_color(retriever, category, phrase):
 
 @pytest.mark.parametrize("store", STORES)
 def test_category_plus_availability_at_specific_store(retriever, store):
+    # "sofaer" + a store is enough specificity to search the sofa-family
+    # union directly (see the "category disambiguation" section below) —
+    # results can be any of sofa/sectional/loveseat, not just literal "sofa".
     results = retriever.retrieve(f"Har I sofaer på lager i {store}?", top_k=8, focus=[]).shown
 
-    assert all(p["category"] == "sofa" for p in results)
+    assert all(p["category"] in SOFA_FAMILY for p in results)
     assert all(p["availability"][store]["stock_quantity"] >= 1 for p in results), (
         f"out-of-stock-at-{store} product leaked in: "
         f"{[p['sku'] for p in results if p['availability'][store]['stock_quantity'] < 1]}"
@@ -116,7 +130,7 @@ def test_category_plus_generic_in_stock(retriever):
     # "på lager" with no store name = in stock *somewhere*, not a specific store.
     results = retriever.retrieve("Har I sofaer på lager?", top_k=8, focus=[]).shown
 
-    assert all(p["category"] == "sofa" for p in results)
+    assert all(p["category"] in SOFA_FAMILY for p in results)
     assert all(
         any(info["stock_quantity"] >= 1 for info in p["availability"].values())
         for p in results
@@ -130,7 +144,7 @@ def test_category_plus_price_and_color(retriever):
     results = retriever.retrieve(query, top_k=8, focus=[]).shown
     expected_colors = retriever.detect_colors(query)
 
-    assert all(p["category"] == "sofa" for p in results)
+    assert all(p["category"] in SOFA_FAMILY for p in results)
     assert all(set(p["colors"]) & expected_colors for p in results)
     assert all(_effective_price(p) <= 8000 for p in results)
 
@@ -141,7 +155,7 @@ def test_category_plus_price_and_availability(retriever):
         f"Har I sofaer under 8000 kr på lager i {store}?", top_k=8, focus=[]
     ).shown
 
-    assert all(p["category"] == "sofa" for p in results)
+    assert all(p["category"] in SOFA_FAMILY for p in results)
     assert all(_effective_price(p) <= 8000 for p in results)
     assert all(p["availability"][store]["stock_quantity"] >= 1 for p in results)
 
@@ -152,7 +166,7 @@ def test_category_plus_color_and_availability(retriever):
     results = retriever.retrieve(query, top_k=8, focus=[]).shown
     expected_colors = retriever.detect_colors(query)
 
-    assert all(p["category"] == "sofa" for p in results)
+    assert all(p["category"] in SOFA_FAMILY for p in results)
     assert all(set(p["colors"]) & expected_colors for p in results)
     assert all(p["availability"][store]["stock_quantity"] >= 1 for p in results)
 
@@ -167,7 +181,7 @@ def test_broad_query_never_falls_back_to_empty_when_matches_exist(retriever):
 
 # --- priority-ranked wide lists + hidden pool ---------------------------
 #
-# "Hvilke sofaer har I?" matches 60+ products — far more than a customer
+# "Hvilke hjørnesofaer har I?" matches 60+ products — far more than a customer
 # should ever be shown in one reply. `retrieve()` returns a RetrievalResult:
 # `shown` (<= SHOWN_MAX_RESULTS, ranked by the catalog's hidden `priority`
 # field) is what goes in the model's context; `pool` is the full matching
@@ -176,7 +190,7 @@ def test_broad_query_never_falls_back_to_empty_when_matches_exist(retriever):
 # handful that were shown.
 
 def test_wide_query_reports_total_count_beyond_shown(retriever):
-    result = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[])
+    result = retriever.retrieve("Hvilke hjørnesofaer har I?", top_k=8, focus=[])
 
     assert len(result.shown) == SHOWN_MAX_RESULTS
     assert result.total_count > SHOWN_MAX_RESULTS, (
@@ -187,7 +201,7 @@ def test_wide_query_reports_total_count_beyond_shown(retriever):
 
 
 def test_wide_query_shown_is_sorted_by_priority_descending(retriever):
-    result = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[])
+    result = retriever.retrieve("Hvilke hjørnesofaer har I?", top_k=8, focus=[])
     priorities = [p["priority"] for p in result.shown]
     assert priorities == sorted(priorities, reverse=True), (
         f"shown products aren't priority-sorted: {priorities}"
@@ -219,13 +233,13 @@ def test_pool_narrowing_backfills_beyond_originally_shown_products(retriever):
     # filter must run against the FULL previous pool, not just the 8 that
     # were shown — so gray matches outside the original shown-8 should
     # surface, not just gray matches among them.
-    broad = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[])
+    broad = retriever.retrieve("Hvilke hjørnesofaer har I?", top_k=8, focus=[])
     assert broad.total_count > SHOWN_MAX_RESULTS  # otherwise this test can't distinguish anything
 
     narrowed = retriever.retrieve("Har I dem i grå?", top_k=8, focus=broad.pool)
     expected_colors = retriever.detect_colors("Har I dem i grå?")
 
-    assert all(p["category"] == "sofa" for p in narrowed.shown)
+    assert all(p["category"] == "sectional" for p in narrowed.shown)
     assert all(set(p["colors"]) & expected_colors for p in narrowed.shown), (
         "narrowed shown set contains a non-gray product"
     )
@@ -254,7 +268,7 @@ def test_pool_is_not_narrowed_by_what_was_merely_mentioned(retriever):
     # derive) rather than the true pool, and confirm the retriever has no
     # way to recover the rest — proving the caller, not the retriever, is
     # responsible for always passing the full pool forward.
-    broad = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[])
+    broad = retriever.retrieve("Hvilke hjørnesofaer har I?", top_k=8, focus=[])
     only_mentioned = broad.shown[:2]
 
     narrowed_from_full_pool = retriever.retrieve("Har I dem i grå?", top_k=8, focus=broad.pool)
@@ -288,18 +302,27 @@ def test_generic_connector_word_is_not_indexed_as_a_color(retriever):
 
 
 def test_hvad_med_idiom_does_not_spuriously_match_unrelated_products(retriever):
-    # The exact reported scenario: narrow an existing pool to gray sofas,
-    # then ask "what about red?" — none of the gray sofas are also red, so
-    # this must correctly report zero matches, not resurface an unrelated
-    # gray-and-non-red product just because its color string contains "med".
-    broad = retriever.retrieve("Hvilke sofaer har I?", top_k=8, focus=[])
+    # The exact reported scenario: narrow an existing pool to gray
+    # sectionals, then ask "what about red?" ("Hvad med rød?" — an idiom;
+    # "med" isn't invoking the preposition). Before the fix, "med" was
+    # spuriously indexed as a color word, so this matched every gray
+    # product whose color string happened to also contain "med" —
+    # regardless of whether it was actually red. Some sectionals
+    # legitimately come in both a gray-ish AND a red-ish color variant
+    # (e.g. "Sort/Grå" and "Sort/Rød" as separate options on the same
+    # product), so asserting zero results isn't the right check — the
+    # right check is that every result is a GENUINE red match (per the
+    # retriever's own color detection), not a false positive let in by
+    # the "med" bug.
+    broad = retriever.retrieve("Hvilke hjørnesofaer har I?", top_k=8, focus=[])
     gray = retriever.retrieve("Har I dem i grå?", top_k=8, focus=broad.pool)
     assert gray.total_count > 0  # sanity: the fixture scenario still applies
 
     red = retriever.retrieve("Hvad med rød ?", top_k=8, focus=gray.pool)
-    assert red.total_count == 0, (
-        f"expected no gray+red overlap, got {red.total_count}: "
-        f"{[(p['sku'], p['colors']) for p in red.shown]}"
+    expected_red_colors = retriever.detect_colors("Hvad med rød ?")
+    assert all(set(p["colors"]) & expected_red_colors for p in red.shown), (
+        f"a product with no genuinely red color leaked in via the 'med' bug: "
+        f"{[(p['sku'], p['colors']) for p in red.shown if not set(p['colors']) & expected_red_colors]}"
     )
 
 
@@ -347,3 +370,56 @@ def test_disambiguation_term_plus_other_filter_searches_directly(retriever):
     assert all(
         p["category"] in {"office_chair", "dining_chair", "bar_stool", "armchair"} for p in result.shown
     )
+
+
+def test_bord_disambiguation_term_returns_category_breakdown(retriever):
+    # Same situation as "stol": "bord" (table) isn't itself a catalog
+    # category — it's the shared head-noun of four specific ones.
+    result = retriever.retrieve("Jeg skal bruge et bord", top_k=8, focus=[])
+    assert result.shown == []
+    assert set(result.category_breakdown) == {
+        "dining_table", "coffee_table", "side_table", "console_table"
+    }
+    assert result.total_count == sum(result.category_breakdown.values())
+
+
+def test_sofa_disambiguation_term_returns_category_breakdown(retriever):
+    # Unlike "stol"/"bord", "sofa" is ALSO one of the sofa-family's own
+    # literal category words (CATEGORY_WORDS["sofa"]) — a bare "sofa" query
+    # matches the plain sofa category directly via the exact-match tier,
+    # not nothing. It must still disambiguate across the whole family
+    # (sofa/sectional/loveseat), not silently default to just "sofa".
+    result = retriever.retrieve("Jeg skal bruge en sofa", top_k=8, focus=[])
+    assert result.shown == []
+    assert set(result.category_breakdown) == SOFA_FAMILY
+    assert result.total_count == sum(result.category_breakdown.values())
+
+
+def test_sofa_family_member_named_directly_bypasses_disambiguation(retriever):
+    # "hjørnesofa" (sectional) is a specific phrase match for one sibling
+    # in the sofa family — it must search directly for sectionals, not
+    # trigger the sofa/sectional/loveseat breakdown just because it's
+    # colloquially "a sofa".
+    result = retriever.retrieve("Hvilke hjørnesofaer har I ?", top_k=8, focus=[])
+    assert result.category_breakdown is None
+    assert all(p["category"] == "sectional" for p in result.shown)
+
+
+def test_sofa_plus_color_searches_whole_family_union(retriever):
+    # "grå sofa" should search sofa + sectional + loveseat filtered by
+    # gray, not just the literal "sofa" category — a customer asking
+    # generically for "a gray sofa" would likely be happy with a gray
+    # sectional too (same reasoning _SOFA_LIKE_CATEGORIES already applies
+    # to focus continuation elsewhere in the retriever).
+    query = "Har I en grå sofa?"
+    result = retriever.retrieve(query, top_k=8, focus=[])
+    expected_colors = retriever.detect_colors(query)
+    assert result.category_breakdown is None
+    assert all(p["category"] in SOFA_FAMILY for p in result.shown)
+    assert all(set(p["colors"]) & expected_colors for p in result.shown)
+    # And it should be a genuine union search, not accidentally scoped to
+    # just one family member — the current catalog has matches in more
+    # than one sofa-family category for gray, so more than one should show
+    # up among the categories actually returned (guards against a future
+    # change silently narrowing `categories` back down to a single value).
+    assert len({p["category"] for p in result.shown}) > 1 or result.total_count <= SHOWN_MAX_RESULTS

@@ -290,6 +290,26 @@ COLOR_WORD_STOPWORDS = {"med", "og", "til", "uden", "af", "som", "den", "det", "
 CATEGORY_DISAMBIGUATION_TERMS: dict[str, set[str]] = {
     "stol": {"office_chair", "dining_chair", "bar_stool", "armchair"},
     "stole": {"office_chair", "dining_chair", "bar_stool", "armchair"},
+    # "bord" (table) is the shared head-noun of four specific compound
+    # categories (spisebord/dining_table, sofabord+kaffebord/coffee_table,
+    # sidebord/side_table, konsolbord/console_table) — same situation as
+    # "stol" above. Deliberately not including tv_stand ("tv-bord") or
+    # outdoor_set here: those are a stretch of "table" a customer asking
+    # generically for "et bord" isn't likely picturing.
+    "bord": {"dining_table", "coffee_table", "side_table", "console_table"},
+    "borde": {"dining_table", "coffee_table", "side_table", "console_table"},
+    # "sofa" is different from "stol"/"bord": it's ALSO one of the
+    # sofa-family's own literal category words (CATEGORY_WORDS["sofa"]),
+    # so a bare "sofa" query already matches the plain sofa category
+    # directly rather than matching nothing. It's included here anyway —
+    # rag/retriever.py's disambiguation check specifically recognizes this
+    # "matched only its own bare self, nothing more specific" case — so a
+    # customer asking generically for "en sofa" is offered sectional and
+    # loveseat too, not just the literal "sofa" category, matching
+    # _SOFA_LIKE_CATEGORIES' existing "customers say sofa for any of
+    # these" reasoning used elsewhere in the retriever.
+    "sofa": {"sofa", "sectional", "loveseat"},
+    "sofaer": {"sofa", "sectional", "loveseat"},
 }
 
 OUT_OF_STOCK_PHRASES = ("udsolgt", "ikke på lager", "ikke tilgængelig")

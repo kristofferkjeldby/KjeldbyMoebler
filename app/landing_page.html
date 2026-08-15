@@ -97,6 +97,7 @@
     border-radius: 12px;
     padding: 18px 14px;
     text-align: center;
+    cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
   .cat-card:hover {
@@ -250,6 +251,60 @@
   }
   .modal-cart-btn:hover { background: var(--accent); }
   .modal-cart-btn.added { background: #2f7d4f; }
+
+  .modal-card.wide { max-width: 1040px; }
+  .table-modal-head {
+    padding: 24px 28px 4px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .table-modal-head h3 { margin: 0; font-size: 1.3rem; }
+  .table-modal-head .count { color: var(--ink-soft); font-size: 0.85rem; }
+  .table-modal-wrap { padding: 12px 28px 28px; overflow-x: auto; }
+  .product-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  .product-table th, .product-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .product-table th {
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    position: sticky;
+    top: 0;
+    background: var(--card);
+  }
+  .product-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+  .product-table th.sortable:hover { color: var(--ink); }
+  .product-table th .sort-arrow {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.35;
+  }
+  .product-table th.sort-active .sort-arrow { opacity: 1; color: var(--accent-dark); }
+  .product-table tbody tr {
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+  .product-table tbody tr:hover { background: var(--bg-alt); }
+  .product-table td.col-name { white-space: normal; font-weight: 600; }
+  .product-table td.col-price .was { color: var(--ink-soft); text-decoration: line-through; font-weight: 400; margin-left: 6px; }
+  .product-table .row-thumb {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    background: var(--bg-alt);
+    border-radius: 6px;
+    display: block;
+  }
 
   .chat-section {
     background: var(--bg);
@@ -508,28 +563,28 @@
     <h2>Kategorier</h2>
     <br>
     <div class="cat-grid">
-      <div class="cat-card"><img class="icon-img" src="images/products/sofa/default.png" alt=""><div class="label">Sofa</div><div class="count">67 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/laenestol/default.png" alt=""><div class="label">Lænestol</div><div class="count">102 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/to-personers_sofa/default.png" alt=""><div class="label">To-personers sofa</div><div class="count">49 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/hjoernesofa/default.png" alt=""><div class="label">Hjørnesofa</div><div class="count">64 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/spisebord/default.png" alt=""><div class="label">Spisebord</div><div class="count">78 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/sofabord/default.png" alt=""><div class="label">Sofabord</div><div class="count">80 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/sidebord/default.png" alt=""><div class="label">Sidebord</div><div class="count">44 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/konsolbord/default.png" alt=""><div class="label">Konsolbord</div><div class="count">70 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/sengeramme/default.png" alt=""><div class="label">Sengeramme</div><div class="count">90 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/natbord/default.png" alt=""><div class="label">Natbord</div><div class="count">74 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/komode/default.png" alt=""><div class="label">Kommode</div><div class="count">80 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/garderobeskab/default.png" alt=""><div class="label">Garderobeskab</div><div class="count">30 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/bogreol/default.png" alt=""><div class="label">Bogreol</div><div class="count">81 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/skrivebord/default.png" alt=""><div class="label">Skrivebord</div><div class="count">57 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/kontorstol/default.png" alt=""><div class="label">Kontorstol</div><div class="count">75 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/spisebordstol/default.png" alt=""><div class="label">Spisebordsstol</div><div class="count">49 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/barstol/default.png" alt=""><div class="label">Barstol</div><div class="count">76 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/tv-bord/default.png" alt=""><div class="label">TV-bord</div><div class="count">47 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/havemoeblesaet/default.png" alt=""><div class="label">Havemøbelsæt</div><div class="count">92 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/taeppe/default.png" alt=""><div class="label">Tæppe</div><div class="count">72 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/belysning/default.png" alt=""><div class="label">Belysning</div><div class="count">78 produkter</div></div>
-      <div class="cat-card"><img class="icon-img" src="images/products/koekkenelement/default.png" alt=""><div class="label">Køkkenelement</div><div class="count">62 produkter</div></div>
+      <div class="cat-card" data-category="sofa"><img class="icon-img" src="images/products/sofa/default.png" alt=""><div class="label">Sofa</div><div class="count">67 produkter</div></div>
+      <div class="cat-card" data-category="armchair"><img class="icon-img" src="images/products/laenestol/default.png" alt=""><div class="label">Lænestol</div><div class="count">102 produkter</div></div>
+      <div class="cat-card" data-category="loveseat"><img class="icon-img" src="images/products/to-personers_sofa/default.png" alt=""><div class="label">To-personers sofa</div><div class="count">49 produkter</div></div>
+      <div class="cat-card" data-category="sectional"><img class="icon-img" src="images/products/hjoernesofa/default.png" alt=""><div class="label">Hjørnesofa</div><div class="count">64 produkter</div></div>
+      <div class="cat-card" data-category="dining_table"><img class="icon-img" src="images/products/spisebord/default.png" alt=""><div class="label">Spisebord</div><div class="count">78 produkter</div></div>
+      <div class="cat-card" data-category="coffee_table"><img class="icon-img" src="images/products/sofabord/default.png" alt=""><div class="label">Sofabord</div><div class="count">80 produkter</div></div>
+      <div class="cat-card" data-category="side_table"><img class="icon-img" src="images/products/sidebord/default.png" alt=""><div class="label">Sidebord</div><div class="count">44 produkter</div></div>
+      <div class="cat-card" data-category="console_table"><img class="icon-img" src="images/products/konsolbord/default.png" alt=""><div class="label">Konsolbord</div><div class="count">70 produkter</div></div>
+      <div class="cat-card" data-category="bed_frame"><img class="icon-img" src="images/products/sengeramme/default.png" alt=""><div class="label">Sengeramme</div><div class="count">90 produkter</div></div>
+      <div class="cat-card" data-category="nightstand"><img class="icon-img" src="images/products/natbord/default.png" alt=""><div class="label">Natbord</div><div class="count">74 produkter</div></div>
+      <div class="cat-card" data-category="dresser"><img class="icon-img" src="images/products/komode/default.png" alt=""><div class="label">Kommode</div><div class="count">80 produkter</div></div>
+      <div class="cat-card" data-category="wardrobe"><img class="icon-img" src="images/products/garderobeskab/default.png" alt=""><div class="label">Garderobeskab</div><div class="count">30 produkter</div></div>
+      <div class="cat-card" data-category="bookshelf"><img class="icon-img" src="images/products/bogreol/default.png" alt=""><div class="label">Bogreol</div><div class="count">81 produkter</div></div>
+      <div class="cat-card" data-category="desk"><img class="icon-img" src="images/products/skrivebord/default.png" alt=""><div class="label">Skrivebord</div><div class="count">57 produkter</div></div>
+      <div class="cat-card" data-category="office_chair"><img class="icon-img" src="images/products/kontorstol/default.png" alt=""><div class="label">Kontorstol</div><div class="count">75 produkter</div></div>
+      <div class="cat-card" data-category="dining_chair"><img class="icon-img" src="images/products/spisebordstol/default.png" alt=""><div class="label">Spisebordsstol</div><div class="count">49 produkter</div></div>
+      <div class="cat-card" data-category="bar_stool"><img class="icon-img" src="images/products/barstol/default.png" alt=""><div class="label">Barstol</div><div class="count">76 produkter</div></div>
+      <div class="cat-card" data-category="tv_stand"><img class="icon-img" src="images/products/tv-bord/default.png" alt=""><div class="label">TV-bord</div><div class="count">47 produkter</div></div>
+      <div class="cat-card" data-category="outdoor_set"><img class="icon-img" src="images/products/havemoeblesaet/default.png" alt=""><div class="label">Havemøbelsæt</div><div class="count">92 produkter</div></div>
+      <div class="cat-card" data-category="rug"><img class="icon-img" src="images/products/taeppe/default.png" alt=""><div class="label">Tæppe</div><div class="count">72 produkter</div></div>
+      <div class="cat-card" data-category="lighting"><img class="icon-img" src="images/products/belysning/default.png" alt=""><div class="label">Belysning</div><div class="count">78 produkter</div></div>
+      <div class="cat-card" data-category="kitchen_unit"><img class="icon-img" src="images/products/koekkenelement/default.png" alt=""><div class="label">Køkkenelement</div><div class="count">62 produkter</div></div>
     </div>
   </section>
 
@@ -677,6 +732,31 @@
   </div>
 </footer>
 
+<div class="modal-overlay" id="category-modal">
+  <div class="modal-card wide">
+    <button class="modal-close" id="category-modal-close" aria-label="Luk">✕</button>
+    <div class="table-modal-head">
+      <h3 id="category-modal-title"></h3>
+      <span class="count" id="category-modal-count"></span>
+    </div>
+    <div class="table-modal-wrap">
+      <table class="product-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="sortable" data-sort="name">Navn <span class="sort-arrow">▲</span></th>
+            <th class="sortable" data-sort="price">Pris <span class="sort-arrow">▲</span></th>
+            <th>Farver</th>
+            <th class="sortable" data-sort="material">Materiale <span class="sort-arrow">▲</span></th>
+            <th class="sortable" data-sort="rating">Bedømmelse <span class="sort-arrow">▲</span></th>
+          </tr>
+        </thead>
+        <tbody id="category-modal-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="product-modal">
   <div class="modal-card">
     <button class="modal-close" id="modal-close" aria-label="Luk">✕</button>
@@ -765,6 +845,86 @@
 
   const fmtKr = n => Math.round(n).toLocaleString("da-DK") + " kr.";
 
+  // --- category table modal -------------------------------------------
+
+  let categoryModalSkus = [];
+  let categorySort = { key: "name", dir: 1 };
+
+  function effectivePrice(p) {
+    return p.discount_price || p.normal_price;
+  }
+
+  function openCategoryModal(category) {
+    categoryModalSkus = Object.keys(PRODUCTS).filter(sku => PRODUCTS[sku].category === category);
+    categorySort = { key: "name", dir: 1 };
+    document.getElementById("category-modal-title").textContent = CATEGORY_LABELS[category] || category;
+    renderCategoryTable();
+    document.getElementById("category-modal").classList.add("open");
+  }
+
+  function renderCategoryTable() {
+    const { key, dir } = categorySort;
+    const sorted = [...categoryModalSkus].sort((a, b) => {
+      const pa = PRODUCTS[a], pb = PRODUCTS[b];
+      let va, vb;
+      if (key === "price") { va = effectivePrice(pa); vb = effectivePrice(pb); }
+      else if (key === "rating") { va = pa.rating || 0; vb = pb.rating || 0; }
+      else { va = (pa[key] || "").toString().toLowerCase(); vb = (pb[key] || "").toString().toLowerCase(); }
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+
+    document.getElementById("category-modal-count").textContent = sorted.length + " produkter";
+
+    document.querySelectorAll("#category-modal th.sortable").forEach(th => {
+      th.classList.toggle("sort-active", th.dataset.sort === key);
+      th.querySelector(".sort-arrow").textContent = th.dataset.sort === key ? (dir === 1 ? "▲" : "▼") : "▲";
+    });
+
+    document.getElementById("category-modal-tbody").innerHTML = sorted.map(sku => {
+      const p = PRODUCTS[sku];
+      const img = productImage(sku, p.category, null);
+      const priceHtml = p.discount_percent
+        ? fmtKr(p.discount_price) + ' <span class="was">' + fmtKr(p.normal_price) + "</span>"
+        : fmtKr(p.normal_price);
+      return (
+        '<tr data-sku="' + sku + '">' +
+          '<td><img class="row-thumb" src="' + img + '" alt=""></td>' +
+          '<td class="col-name">' + p.name + '</td>' +
+          '<td class="col-price">' + priceHtml + '</td>' +
+          '<td>' + (p.colors || []).join(", ") + '</td>' +
+          '<td>' + (p.material || "") + '</td>' +
+          '<td>' + (p.rating ? p.rating + " ★" : "") + '</td>' +
+        '</tr>'
+      );
+    }).join("");
+
+    document.querySelectorAll("#category-modal-tbody tr").forEach(tr => {
+      tr.addEventListener("click", () => openProductModal(tr.dataset.sku));
+    });
+  }
+
+  document.querySelectorAll("#category-modal th.sortable").forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      categorySort = categorySort.key === key ? { key, dir: -categorySort.dir } : { key, dir: 1 };
+      renderCategoryTable();
+    });
+  });
+
+  function closeCategoryModal() {
+    document.getElementById("category-modal").classList.remove("open");
+  }
+
+  document.getElementById("category-modal-close").addEventListener("click", closeCategoryModal);
+  document.getElementById("category-modal").addEventListener("click", e => {
+    if (e.target.id === "category-modal") closeCategoryModal();
+  });
+  document.querySelectorAll(".cat-card[data-category]").forEach(el => {
+    el.addEventListener("click", () => openCategoryModal(el.dataset.category));
+  });
+
   function openProductModal(sku, color) {
     const p = PRODUCTS[sku];
     if (!p) return;
@@ -826,7 +986,11 @@
   document.getElementById("product-modal").addEventListener("click", e => {
     if (e.target.id === "product-modal") closeProductModal();
   });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeProductModal(); });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    closeProductModal();
+    closeCategoryModal();
+  });
 
   document.querySelectorAll(".series-card li .pname[data-sku]").forEach(el => {
     el.addEventListener("click", () => openProductModal(el.dataset.sku));

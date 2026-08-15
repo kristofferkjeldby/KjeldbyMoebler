@@ -216,6 +216,28 @@ _EXISTING_LINK_RE = re.compile(r"\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[
 _MODEL_CATEGORY_LINK_RE = re.compile(r"\n*\[[^\]]*\]\(https://kjeldbymobler\.dk/kategori/[^\)]+\)")
 
 
+def _safe_stream_prefix(text: str) -> str:
+    """Trim `text` back to before any not-yet-closed markdown link.
+
+    The model occasionally writes its own markdown link (see the comment on
+    `_MODEL_CATEGORY_LINK_RE` above) directly in its streamed reply. Shown
+    token-by-token as-is, that link's raw syntax — a bare "[", then the link
+    text, then "](https://kjeldby..." — is visible mid-stream before it's
+    complete. Holding back everything from the last unresolved "[" onward
+    means the customer only ever sees a link once it's fully formed, never
+    its broken-looking raw markdown while it's still being typed out.
+    """
+    idx = text.rfind("[")
+    if idx == -1:
+        return text
+    close_bracket = text.find("]", idx)
+    if close_bracket == -1 or close_bracket + 1 >= len(text) or text[close_bracket + 1] != "(":
+        return text[:idx]
+    if text.find(")", close_bracket) == -1:
+        return text[:idx]
+    return text
+
+
 def _linkify(text: str, products: list[dict]) -> str:
     placeholders: dict[str, str] = {}
 
@@ -428,11 +450,15 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         # a product name or SKU completed mid-token — it showed as plain
         # text while partial, then suddenly re-rendered as a link. Streaming
         # the raw text avoids that; the fully-formatted version is swapped
-        # in as a single atomic update once the reply is done.
+        # in as a single atomic update once the reply is done. Separately,
+        # _safe_stream_prefix holds back any markdown link the model is
+        # mid-way through writing itself, so its raw "[...](https://..."
+        # syntax is never shown broken — only once complete, or once the
+        # full reply lands below.
         partial = ""
         for token in model.chat_stream(system_prompt, message, history=history):
             partial += token
-            yield partial, previous_shown_json, previous_log_text
+            yield _safe_stream_prefix(partial), previous_shown_json, previous_log_text
 
         rendered = _bulletize_enumerations(_linkify(partial, result.shown))
         rendered = _MODEL_CATEGORY_LINK_RE.sub("", rendered).rstrip()

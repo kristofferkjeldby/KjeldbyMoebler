@@ -205,6 +205,16 @@ document.addEventListener('click', function (e) {
 # and producing garbled nested links like "[[Name](url)](url/[SKU](url))".
 _EXISTING_LINK_RE = re.compile(r"\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)")
 
+# The model has occasionally picked up the "[Se alle N <kategori> ->](...)"
+# shape from its own context (the truncation note in products_to_context())
+# and written its own version alongside the one app/gradio_app.py always
+# appends deterministically afterward — producing two "see all" links for
+# the same category with two different labels (the model's own phrasing
+# vs. CATEGORY_LABELS' fixed one). Since the appended one is always
+# correct and the model's is redundant at best, any model-written category
+# link is stripped out before the real one is added — never the reverse.
+_MODEL_CATEGORY_LINK_RE = re.compile(r"\n*\[[^\]]*\]\(https://kjeldbymobler\.dk/kategori/[^\)]+\)")
+
 
 def _linkify(text: str, products: list[dict]) -> str:
     placeholders: dict[str, str] = {}
@@ -425,6 +435,7 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             yield partial, previous_shown_json, previous_log_text
 
         rendered = _bulletize_enumerations(_linkify(partial, result.shown))
+        rendered = _MODEL_CATEGORY_LINK_RE.sub("", rendered).rstrip()
 
         # More matched than were shown: append a deterministic link to the
         # category-table modal rather than trusting the (un-fine-tuned)

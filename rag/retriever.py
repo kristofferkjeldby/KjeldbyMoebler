@@ -18,16 +18,18 @@ Pure semantic top-k is wrong for several common question shapes:
 So retrieval is two-tier: detect explicit category / color / store /
 quantity / stock-availability / price-superlative / dimension intent from
 the query (matched against the catalog's own vocabulary), and if anything
-was detected, filter (and sort) the full catalog accordingly — returning
-every result, capped at ENUMERATION_MAX_RESULTS, including an empty list
-when nothing matches (which correctly tells the model "we don't have that").
-Otherwise, fall back to semantic top-k for open-ended/specific questions.
+was detected, filter (and sort) the full catalog accordingly — the model
+only ever sees the top SHOWN_MAX_RESULTS by the catalog's hidden `priority`
+field (see RetrievalResult below), including an empty list when nothing
+matches (which correctly tells the model "we don't have that"). Otherwise,
+fall back to semantic top-k for open-ended/specific questions.
 """
 from __future__ import annotations
 
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import faiss
@@ -44,7 +46,6 @@ from config import (  # noqa: E402
     DIM_KEYWORDS,
     DIMENSION_TOLERANCE_CM,
     EMBEDDING_MODEL_NAME,
-    ENUMERATION_MAX_RESULTS,
     EXPENSIVE_PHRASES,
     EXTRA_CATEGORY_TRIGGER_WORDS,
     FAISS_INDEX_PATH,
@@ -55,9 +56,37 @@ from config import (  # noqa: E402
     SEMANTIC_CANDIDATE_POOL_SIZE,
     SERIES_INTENT_PHRASES,
     SERIES_INTENT_WORD_PAIRS,
+    SHOWN_MAX_RESULTS,
     STORES,
     WORD_CHARS,
 )
+
+
+@dataclass
+class RetrievalResult:
+    """`shown` is what actually goes in the model's context (<= SHOWN_MAX_RESULTS,
+    ranked by the catalog's hidden `priority` field). `pool` is the full
+    matching set `shown` was drawn from — pass it back in as next turn's
+    `focus` so a follow-up filter (a color, a price cap) narrows the whole
+    match set, not just the small subset that happened to be shown. `pool`
+    is never narrowed by what the model's reply actually talks about — only
+    an explicit new filter narrows it — see app/gradio_app.py.
+    """
+
+    shown: list[dict]
+    pool: list[dict]
+    total_count: int
+
+
+def _split_shown(matches: list[dict]) -> RetrievalResult:
+    """Rank `matches` by the catalog's hidden `priority` field (highest
+    first) and split into the model-facing `shown` subset vs. the full
+    `pool` used for follow-up narrowing. A product with no `priority` set
+    sorts last (0), rather than raising, so this stays safe against any
+    catalog data that predates the field.
+    """
+    ranked = sorted(matches, key=lambda p: p.get("priority", 0), reverse=True)
+    return RetrievalResult(shown=ranked[:SHOWN_MAX_RESULTS], pool=ranked, total_count=len(ranked))
 
 # Customers say "sofa" generically to mean any couch-like seating, but the
 # catalog's own category taxonomy splits that into three distinct values —
@@ -255,8 +284,8 @@ class ProductRetriever:
         """"under 4000 kr" -> (0, 4000); "over 4000 kr" -> (4000, inf) — a
         numeric bound, distinct from the superlative "cheapest" detector
         above. Without this, a budget query silently falls back to an
-        unbounded category filter capped at ENUMERATION_MAX_RESULTS, which
-        can miss the actual cheap/expensive matches entirely.
+        unbounded category filter capped at SHOWN_MAX_RESULTS, which can
+        miss the actual cheap/expensive matches entirely.
         """
         match = _PRICE_THRESHOLD_RE.search(query_lower)
         if not match:
@@ -403,24 +432,33 @@ class ProductRetriever:
             dimension=dimension,
         )
 
-    def retrieve(self, query: str, top_k: int = RETRIEVAL_TOP_K, focus: list[dict] | None = None) -> list[dict]:
-        """`focus` is the set of products the conversation is currently
-        "about" (typically whatever the previous turn retrieved) — lets
-        follow-ups like "hvad koster den?" or "fås den i sort?" resolve
-        without the customer re-naming the product. Explicit signals (SKU,
-        product name, or a new category) always override focus, since those
-        mean the customer has moved on to something else.
+    def retrieve(self, query: str, top_k: int = RETRIEVAL_TOP_K, focus: list[dict] | None = None) -> RetrievalResult:
+        """`focus` is the FULL matching set the conversation is currently
+        "about" — typically the previous turn's `RetrievalResult.pool`, not
+        just what was shown — so a follow-up filter ("fås den i grå?") is
+        applied against everything that matched originally, not just the
+        handful the model happened to show. Explicit signals (SKU, product
+        name, or a new category) always override focus, since those mean
+        the customer has moved on to something else.
+
+        The return value's `shown` (<= SHOWN_MAX_RESULTS, ranked by the
+        catalog's hidden `priority` field) is what should go in the model's
+        context; `pool` is what the caller should pass back in as next
+        turn's `focus` so narrowing continues to work against the whole
+        matching set, not just what was shown.
         """
         focus = focus or []
         query_lower = query.lower()
         query_words = _words(query)
 
         # A customer citing an exact SKU always wins over every other signal.
+        # No priority ranking here — these are the exact products the
+        # customer named, not a broad match that needs narrowing down.
         sku_matches = [m.group(0).upper() for m in _SKU_RE.finditer(query)]
         if sku_matches:
             found = [p for sku in sku_matches if (p := self.get_by_sku(sku)) is not None]
             if found:
-                return found
+                return RetrievalResult(shown=found, pool=found, total_count=len(found))
 
         # Product(s) named or closely referenced in the query take priority
         # over attribute filters and semantic search — this is what fixes
@@ -434,8 +472,8 @@ class ProductRetriever:
             if is_series_query and len(name_matches) == 1 and name_matches[0].get("series_id"):
                 siblings = self.get_series(name_matches[0]["series_id"])
                 if siblings:
-                    return siblings[:ENUMERATION_MAX_RESULTS]
-            return name_matches[:ENUMERATION_MAX_RESULTS]
+                    return _split_shown(siblings)
+            return _split_shown(name_matches)
 
         categories = self._detect_categories(query_lower, query_words)
         colors = self._detect_colors(query_words)
@@ -467,6 +505,10 @@ class ProductRetriever:
         categories_are_new = bool(categories) and not any(_cat_family(c) in focus_families for c in categories)
         if focus and not categories_are_new:
             if any_filter:
+                # `candidates=focus` filters against the FULL previous pool
+                # (not just what was shown) — this is what lets "fås den i
+                # grå?" surface gray options beyond the ones already shown,
+                # not just gray options among them.
                 filtered = self._filter(
                     colors=colors or None,
                     store=store,
@@ -480,13 +522,13 @@ class ProductRetriever:
                 # Even an empty result is meaningful here (e.g. "fås den i
                 # sort?" when it isn't) — don't fall back to a fresh search,
                 # that would silently answer about a different product.
-                return filtered[:ENUMERATION_MAX_RESULTS]
-            return focus[:ENUMERATION_MAX_RESULTS]
+                return _split_shown(filtered)
+            return _split_shown(focus)
 
         # store/stock/price alone (no category, color, or dimension signal)
         # isn't a trustworthy "what kind of product" filter over the WHOLE
         # catalog — e.g. a category word we failed to recognize plus "i
-        # stock in Odense" would otherwise silently return whatever 12
+        # stock in Odense" would otherwise silently return whatever
         # products happen to be first in catalog order with Odense stock,
         # which looks like a real answer but is unrelated noise. Semantic
         # search on the raw query is far more likely to actually find the
@@ -505,9 +547,14 @@ class ProductRetriever:
             )
             # Explicit filter detected: return it as-is (even if empty — an
             # empty list correctly tells the model "we don't have that").
-            return matches[:ENUMERATION_MAX_RESULTS]
+            return _split_shown(matches)
 
-        return self._semantic_search(query, top_k)
+        # Semantic search doesn't get the wide-list treatment: it's already
+        # relevance-ranked top-k for an open-ended query, not a structured
+        # match where "everything else that matched" is a meaningful set to
+        # offer a "see all" link into.
+        semantic_matches = self._semantic_search(query, top_k)
+        return RetrievalResult(shown=semantic_matches, pool=semantic_matches, total_count=len(semantic_matches))
 
     def _semantic_search(self, query: str, top_k: int) -> list[dict]:
         """Two-stage: the bi-encoder (fast, independently-embedded vectors)

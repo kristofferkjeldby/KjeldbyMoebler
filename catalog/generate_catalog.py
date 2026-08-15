@@ -239,6 +239,15 @@ def apply_local_fields(product: dict, index: int) -> dict:
     else:
         product["discount_percent"] = None
         product["discount_price"] = None
+    # Business-set "which of these do we want to sell first" ranking (0-100,
+    # higher = shown first when a query matches more than SHOWN_MAX_RESULTS
+    # products) — never rendered into the model's context or the customer
+    # UI. This is a placeholder: real values should come from actual
+    # business input (margin, aged stock, etc.), not this random catalog.
+    # Seeded on the SKU (not the shared `random` stream) so it's
+    # reproducible independent of generation order/threading and stable if
+    # this script is ever re-run with --resume.
+    product["priority"] = random.Random(product["sku"]).randint(0, 100)
     return product
 
 

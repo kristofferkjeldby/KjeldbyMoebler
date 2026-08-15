@@ -108,10 +108,21 @@ PRODUCT_LINK_SCRIPT = """
 <script>
 document.addEventListener('click', function (e) {
   var a = e.target.closest('a[href*="kjeldbymobler.dk/produkt/"]');
-  if (!a) return;
-  e.preventDefault();
-  var sku = a.getAttribute('href').split('/produkt/')[1];
-  window.parent.postMessage({type: 'kjeldby-open-product', sku: sku}, '*');
+  if (a) {
+    e.preventDefault();
+    var sku = a.getAttribute('href').split('/produkt/')[1];
+    window.parent.postMessage({type: 'kjeldby-open-product', sku: sku}, '*');
+    return;
+  }
+  // "Se alle N <kategori> ->" link appended after a reply that only showed
+  // the top SHOWN_MAX_RESULTS of a larger match — opens the same
+  // category-table modal the landing page's category cards use.
+  var catA = e.target.closest('a[href*="kjeldbymobler.dk/kategori/"]');
+  if (catA) {
+    e.preventDefault();
+    var category = catA.getAttribute('href').split('/kategori/')[1];
+    window.parent.postMessage({type: 'kjeldby-open-category', category: category}, '*');
+  }
 });
 
 (function () {
@@ -233,8 +244,8 @@ def _reorder_by_mention(rendered_text: str, retrieved: list[dict]) -> list[dict]
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.llm_backend import PodChatModel  # noqa: E402
-from catalog.product_format import products_to_context  # noqa: E402
-from config import BASE_MODEL_ID, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE  # noqa: E402
+from catalog.product_format import CATEGORY_LABELS, products_to_context  # noqa: E402
+from config import BASE_MODEL_ID, CATEGORY_URL_BASE, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE  # noqa: E402
 from rag.retriever import ProductRetriever  # noqa: E402
 
 
@@ -242,11 +253,25 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
     retriever = ProductRetriever()
     model = PodChatModel(model=model_name, base_url=base_url)
 
-    # Single-user local POC, so a plain closure variable is enough to track
-    # "focus" (the product(s) the conversation is currently about) across
-    # turns — a multi-session deployment would need this in per-session
-    # gr.State instead.
-    focus_state: dict[str, list[dict]] = {"products": []}
+    # Single-user local POC, so plain closure variables are enough to track
+    # conversation state across turns — a multi-session deployment would
+    # need these in per-session gr.State instead.
+    #
+    # Two separate pieces of state, deliberately not one:
+    #   - pool_state: the FULL matching set for the current topic (can be
+    #     dozens of products — "all 67 sectional sofas"), passed back into
+    #     retriever.retrieve() as `focus` so a follow-up filter ("i grå?")
+    #     narrows against everything that matched, not just what was shown.
+    #     It only narrows on an explicit new filter — never on which subset
+    #     of `shown_state` the model's reply happened to mention, so a
+    #     vaguely-worded reply can't silently shrink the pool a later,
+    #     unrelated filter would otherwise have searched against.
+    #   - shown_state: the <= SHOWN_MAX_RESULTS products actually shown to
+    #     the model / displayed in the focus panel this turn — purely a
+    #     display concern, reordered (not filtered) by what the reply
+    #     actually mentioned.
+    pool_state: dict[str, list[dict]] = {"products": []}
+    shown_state: dict[str, list[dict]] = {"products": []}
     # The customer may name a color before, after, or never relative to
     # naming a product ("har I dem i mørkegrå" after already seeing some
     # sofas). Rather than track "is this color valid right now", each
@@ -276,17 +301,18 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         ])
 
     def respond(message: str, history: list[dict]):
-        # Keep showing the *previous* turn's focus while this reply streams —
-        # updating it to the full retrieved set immediately (before the model
-        # has said anything) made the panel flash a larger list that then
-        # shrank once narrowed to what was actually mentioned. It only
-        # changes once, at the end, straight to its final value.
-        previous_focus = focus_state["products"]
+        # Keep showing the *previous* turn's shown set while this reply
+        # streams — updating it immediately (before the model has said
+        # anything) made the panel flash a larger list that then shrank
+        # once narrowed to what was actually mentioned. It only changes
+        # once, at the end, straight to its final value.
+        previous_pool = pool_state["products"]
+        previous_shown = shown_state["products"]
         previous_colors = color_state["colors"]
-        retrieved = retriever.retrieve(message, top_k=RETRIEVAL_TOP_K, focus=previous_focus)
-        context = products_to_context(retrieved)
+        result = retriever.retrieve(message, top_k=RETRIEVAL_TOP_K, focus=previous_pool)
+        context = products_to_context(result.shown, result.total_count)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
-        previous_focus_json = _focus_payload(previous_focus, previous_colors)
+        previous_shown_json = _focus_payload(previous_shown, previous_colors)
 
         # Linkifying/bulletizing during streaming caused a visible flip once
         # a product name or SKU completed mid-token — it showed as plain
@@ -296,29 +322,47 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         partial = ""
         for token in model.chat_stream(system_prompt, message, history=history):
             partial += token
-            yield partial, previous_focus_json
+            yield partial, previous_shown_json
 
-        rendered = _bulletize_enumerations(_linkify(partial, retrieved))
-        yield rendered, previous_focus_json
+        rendered = _bulletize_enumerations(_linkify(partial, result.shown))
 
-        if retrieved:
+        # More matched than were shown: append a deterministic link to the
+        # category-table modal rather than trusting the (un-fine-tuned)
+        # model to construct the URL itself — same reliability reasoning as
+        # why product links are code-appended via _linkify rather than
+        # generated by the model.
+        if result.total_count > len(result.shown) and result.shown:
+            category = result.shown[0]["category"]
+            label = CATEGORY_LABELS.get(category, category)
+            see_all_url = CATEGORY_URL_BASE.format(category=category)
+            rendered += f"\n\n[Se alle {result.total_count} {label} →]({see_all_url})"
+
+        yield rendered, previous_shown_json
+
+        if result.pool:
+            pool_state["products"] = result.pool
+
+        if result.shown:
             # A pure carryover follow-up ("which of these has the best
-            # reviews?") returns the exact same focus set it was given —
+            # reviews?") returns the exact same shown set it was given —
             # nothing new was searched for, so a reply naming just one
             # product is picking a winner, not narrowing the set itself.
-            is_pure_carryover = {p["sku"] for p in retrieved} == {p["sku"] for p in previous_focus}
+            # This only reorders the small displayed set for the focus
+            # panel — it never affects pool_state (see the comment above).
+            is_pure_carryover = {p["sku"] for p in result.shown} == {p["sku"] for p in previous_shown}
             if is_pure_carryover:
-                mentioned = _reorder_by_mention(rendered, retrieved)
+                mentioned = _reorder_by_mention(rendered, result.shown)
             else:
-                mentioned = _mentioned_products(rendered, retrieved)
+                mentioned = _mentioned_products(rendered, result.shown)
             detected_colors = retriever.detect_colors(message)
             new_colors = {c.lower() for c in detected_colors} if detected_colors else previous_colors
-            focus_state["products"] = mentioned
+            shown_state["products"] = mentioned
             color_state["colors"] = new_colors
             yield rendered, _focus_payload(mentioned, new_colors)
 
     def reset_focus() -> str:
-        focus_state["products"] = []
+        pool_state["products"] = []
+        shown_state["products"] = []
         color_state["colors"] = set()
         return _focus_payload([], set())
 
@@ -335,8 +379,8 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             ],
         )
         # The trash/clear icon on the chatbot only clears the visible
-        # conversation by default — focus_state/color_state are separate
-        # server-side variables that need their own reset, and the frontend
+        # conversation by default — pool_state/shown_state/color_state are
+        # separate server-side variables that need their own reset, and the frontend
         # focus panel only follows the "focus-data" textbox, so that has to
         # be pushed back to empty too for the panel to actually clear.
         chat.chatbot.clear(fn=reset_focus, outputs=[focus_data])

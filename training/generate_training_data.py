@@ -43,7 +43,7 @@ from config import (  # noqa: E402
     CATALOG_PATH,
     CLAUDE_MODEL,
     DISCOVERY_VIBES,
-    ENUMERATION_MAX_RESULTS,
+    SHOWN_MAX_RESULTS,
     EXAMPLES_PER_PRODUCT,
     GENERATION_MAX_WORKERS,
     NUM_DIMENSION_EXAMPLES,
@@ -410,7 +410,7 @@ def main() -> None:
         mode = random.choice(["category", "color", "category_color"])
         category = random.choice(categories) if mode in ("category", "category_color") else None
         color_word = random.choice(color_words) if mode in ("color", "category_color") else None
-        matches = retriever.filter_products(category=category, color_word=color_word)[:ENUMERATION_MAX_RESULTS]
+        matches = retriever.filter_products(category=category, color_word=color_word)[:SHOWN_MAX_RESULTS]
         jobs.append(("enumeration", (category, color_word, matches)))
 
     # Store + quantity jobs — biased toward quantities > 1, mirroring "I need
@@ -420,7 +420,7 @@ def main() -> None:
         category = random.choice(categories)
         store = random.choice(STORES)
         quantity = random.choice([1, 2, 2, 3, 4, 6, 8])
-        matches = retriever.filter_products(category=category, store=store, min_quantity=quantity)[:ENUMERATION_MAX_RESULTS]
+        matches = retriever.filter_products(category=category, store=store, min_quantity=quantity)[:SHOWN_MAX_RESULTS]
         jobs.append(("store_stock", (category, store, quantity, matches)))
 
     # Dimension-fit jobs — target values sampled broadly enough to produce a
@@ -429,7 +429,7 @@ def main() -> None:
         category = random.choice(categories)
         field = random.choice(DIMENSION_FIELDS)
         target = round(random.uniform(30, 250))
-        matches = retriever.filter_products(category=category, dimension=(field, target, 5))[:ENUMERATION_MAX_RESULTS]
+        matches = retriever.filter_products(category=category, dimension=(field, target, 5))[:SHOWN_MAX_RESULTS]
         jobs.append(("dimension", (category, field, target, matches)))
 
     # Series-matching jobs — only series with >=2 members are useful here.

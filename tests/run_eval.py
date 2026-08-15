@@ -50,8 +50,8 @@ def main() -> None:
     results = []
     skipped = []
     for i, q in enumerate(questions, start=1):
-        retrieved = retriever.retrieve(q["question"], top_k=RETRIEVAL_TOP_K)
-        context = products_to_context(retrieved)
+        result = retriever.retrieve(q["question"], top_k=RETRIEVAL_TOP_K)
+        context = products_to_context(result.shown, result.total_count)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
         try:
             answer = with_retries(model.chat, system_prompt, q["question"])
@@ -62,7 +62,8 @@ def main() -> None:
 
         results.append({
             **q,
-            "retrieved_skus": [p["sku"] for p in retrieved],
+            "retrieved_skus": [p["sku"] for p in result.shown],
+            "total_match_count": result.total_count,
             "model_answer": answer,
         })
         if i % 10 == 0:

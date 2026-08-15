@@ -61,15 +61,15 @@ def run_journey(name: str, questions: list[str], retriever: ProductRetriever, mo
     history: list[dict] = []
     focus: list[dict] = []
     for i, question in enumerate(questions, start=1):
-        retrieved = retriever.retrieve(question, top_k=RETRIEVAL_TOP_K, focus=focus)
-        if retrieved:
-            focus = retrieved
-        context = products_to_context(retrieved)
+        result = retriever.retrieve(question, top_k=RETRIEVAL_TOP_K, focus=focus)
+        if result.pool:
+            focus = result.pool  # full matching set, not just what's shown — see RetrievalResult
+        context = products_to_context(result.shown, result.total_count)
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
         answer = model.chat(system_prompt, question, history=history)
 
         print(f"\n[{i}] Kunde: {question}")
-        print(f"    Fokus ({len(retrieved)}): {[p['name'] for p in retrieved][:4]}")
+        print(f"    Vist ({len(result.shown)}/{result.total_count}): {[p['name'] for p in result.shown][:4]}")
         print(f"    Svar: {answer}")
 
         history.append({"role": "user", "content": question})

@@ -98,8 +98,16 @@ EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 SEMANTIC_CANDIDATE_POOL_SIZE = 30  # bi-encoder recall pool, reranked down to RETRIEVAL_TOP_K
 RETRIEVAL_TOP_K = 8          # semantic fallback for open-ended questions (name/attribute matching are tried first)
-ENUMERATION_MAX_RESULTS = 12  # cap when a query matches many products (e.g. "what chairs come in yellow")
+# Cap on how many products the model is actually shown/allowed to talk about
+# in one reply, even when a query matches far more (e.g. "which sectional
+# sofas do you have" can match 60+) — the top SHOWN_MAX_RESULTS by `priority`
+# (catalog/product_format.py) are shown; the rest are only reachable via the
+# "see all" link (app/gradio_app.py) or the category-table modal
+# (app/landing_page.html). Was ENUMERATION_MAX_RESULTS (12) before priority
+# ranking existed to pick *which* subset to show.
+SHOWN_MAX_RESULTS = 8
 DIMENSION_TOLERANCE_CM = 5    # "60cm deep" matches products within +/- this many cm
+CATEGORY_URL_BASE = "https://kjeldbymobler.dk/kategori/{category}"  # "see all" link — intercepted client-side, see app/gradio_app.py
 
 # --- Training data ---
 TRAINING_DIR = ROOT / "training" / "data"

@@ -11,9 +11,17 @@ Product shape (see catalog/generate_catalog.py for how it's produced):
       "normal_price", "discount_percent", "discount_price",  # discount_* nullable
       "colors", "material", "dimensions", "weight_kg",
       "rating", "review_count", "warranty_years", "assembly_required", "room",
+      "priority",                              # 0-100, business-set — see below
       "availability": {"København": {"stock_quantity", "restock_date"}, "Århus": {...}, "Odense": {...}},
       "attributes": {category-specific fields; irrelevant ones are null},
     }
+
+`priority` (0-100, higher = shown first) is a hidden business ranking used
+by rag/retriever.py to pick which products surface when a query matches
+more than SHOWN_MAX_RESULTS (config.py) — e.g. "which sectional sofas do
+you have" matching 67 products. It must NEVER be rendered into the model's
+context (product_to_context_block below deliberately omits it) or exposed
+to the customer — it's an internal ranking signal only.
 
 Text fields (name, short_description, colors, material) are in Danish;
 category/room are English internal keys translated for display via
@@ -145,11 +153,26 @@ def product_to_context_block(product: dict) -> str:
     )
 
 
-def products_to_context(products: list[dict]) -> str:
-    """Render a list of products as the full context block for the system prompt."""
+def products_to_context(products: list[dict], total_count: int | None = None) -> str:
+    """Render a list of products as the full context block for the system prompt.
+
+    `total_count` is the true size of the full matching set before it was
+    narrowed to `products` (see rag/retriever.py's RetrievalResult) — when
+    it's larger than `len(products)`, a trailing note tells the model more
+    matches exist so its prose can acknowledge that. The note is advisory
+    only: the actual "see all" link is appended deterministically by
+    app/gradio_app.py after generation, not left to the model to construct.
+    """
     if not products:
         return "(ingen matchende produkter fundet)"
-    return "\n\n".join(product_to_context_block(p) for p in products)
+    blocks = "\n\n".join(product_to_context_block(p) for p in products)
+    if total_count and total_count > len(products):
+        blocks += (
+            f"\n\n(Bemærk: der er i alt {total_count} produkter, der matcher — kun de "
+            f"{len(products)} mest relevante er vist her. Fortæl kunden at der findes "
+            f"flere, og at de kan se hele listen.)"
+        )
+    return blocks
 
 
 def product_to_embedding_text(product: dict) -> str:

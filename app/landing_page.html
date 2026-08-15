@@ -1010,6 +1010,9 @@
     if (e.data && e.data.type === "kjeldby-open-product" && e.data.sku) {
       openProductModal(e.data.sku);
     }
+    if (e.data && e.data.type === "kjeldby-open-category" && e.data.category) {
+      openCategoryModal(e.data.category);
+    }
     if (e.data && e.data.type === "kjeldby-focus-update" && Array.isArray(e.data.products)) {
       liveFocusProducts = e.data.products;
       renderFocusPanel();

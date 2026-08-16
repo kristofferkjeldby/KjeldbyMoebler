@@ -99,9 +99,19 @@ function renderProductTable(opts) {
     });
   }
 
+  // colorFilter (optional): array of catalog color strings from the query
+  // ("hjørnesofaer i rød" -> ["Rød"]) — when present, each row shows and
+  // opens the product in whichever of its own colors matches, instead of
+  // its arbitrary default photo, so results actually reflect what was
+  // searched for. Matched case-insensitively, same as openCategoryModal's
+  // existing color-filter logic.
+  const filterLower = opts.colorFilter && opts.colorFilter.length ? opts.colorFilter.map(c => c.toLowerCase()) : null;
+  const matchColor = p => filterLower ? (p.colors || []).find(c => filterLower.includes(c.toLowerCase())) : null;
+
   opts.tbodyEl.innerHTML = sorted.map(sku => {
     const p = PRODUCTS[sku];
-    const img = productImage(sku, p.category, null);
+    const matched = matchColor(p);
+    const img = productImage(sku, p.category, matched || null);
     const priceHtml = p.discount_percent
       ? fmtKr(p.discount_price) + ' <span class="was">' + fmtKr(p.normal_price) + "</span>"
       : fmtKr(p.normal_price);
@@ -118,7 +128,9 @@ function renderProductTable(opts) {
   }).join("");
 
   opts.tbodyEl.querySelectorAll("tr").forEach(tr => {
-    tr.addEventListener("click", () => (opts.onRowClick || openProductModal)(tr.dataset.sku));
+    const sku = tr.dataset.sku;
+    const matched = matchColor(PRODUCTS[sku]);
+    tr.addEventListener("click", () => (opts.onRowClick || openProductModal)(sku, matched || undefined));
   });
 
   return sorted;

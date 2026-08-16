@@ -11,6 +11,7 @@ const resultsSummary = document.getElementById("results-summary");
 
 let searchSort = { key: "name", dir: 1 };
 let currentPoolSkus = [];
+let currentColorFilter = [];
 let debounceTimer = null;
 
 searchInput.addEventListener("input", () => {
@@ -99,6 +100,7 @@ function renderResults(result) {
   disambigSection.style.display = "none";
   resultsSection.style.display = "block";
   currentPoolSkus = result.pool;
+  currentColorFilter = result.detected_colors || [];
   searchSort = { key: "name", dir: 1 };
   // Full pool, not just `shown` — this page is for testing the retriever
   // directly, so seeing every match (including the ones a chat reply would
@@ -115,6 +117,7 @@ function renderSearchTable() {
     sortState: searchSort,
     tbodyEl: document.getElementById("search-results-tbody"),
     headEls: document.querySelectorAll("#search-results-table th.sortable"),
+    colorFilter: currentColorFilter,
   });
 }
 

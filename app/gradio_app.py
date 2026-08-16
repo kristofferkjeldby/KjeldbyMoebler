@@ -291,11 +291,17 @@ def build_app(app: FastAPI, model_name: str, base_url: str) -> gr.Blocks:
         # this endpoint exists to inspect what the retriever does with one
         # query in isolation, the same thing every chat turn starts from.
         result = retriever.retrieve(q, top_k=RETRIEVAL_TOP_K)
+        # Surfaced so the results page can show/open products in the color
+        # the query actually asked for ("hjørnesofaer i rød") rather than
+        # each product's arbitrary default photo — same detection the chat
+        # already uses to build its own color-filtered "see all" links.
+        detected_colors = sorted(retriever.detect_colors(q))
         return {
             "shown": [p["sku"] for p in result.shown],
             "pool": [p["sku"] for p in result.pool],
             "total_count": result.total_count,
             "category_breakdown": result.category_breakdown,
+            "detected_colors": detected_colors,
         }
 
     # Single-user local POC, so plain closure variables are enough to track

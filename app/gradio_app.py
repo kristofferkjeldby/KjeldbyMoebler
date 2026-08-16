@@ -13,22 +13,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
+from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote
 
 import gradio as gr
-
-# Renders any SKU or retrieved-product name the model mentions as a link
-# to a fake product URL. The chat runs in a separate-origin iframe embedded
-# in the landing page, so a click can't reach that page's DOM directly — a
-# head script (see PRODUCT_LINK_SCRIPT below) intercepts the click and
-# posts a message to the parent window, which opens the product modal.
-# (A bare "#product-<SKU>" fragment href doesn't render reliably through
-# Gradio's markdown pipeline — a normal-looking absolute URL does.)
-_SKU_RE = re.compile(r"\bFRN-\d{4}\b")
-_PRODUCT_URL = "https://kjeldbymobler.dk/produkt/{sku}"
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # The "focus-data" textbox (see build_app) carries the current focus set as
 # JSON, refreshed on every reply. It's a normal *visible* component (hidden
@@ -44,6 +36,11 @@ PRODUCT_LINK_SCRIPT = """
   #focus-data, #chat-log-data { position: absolute !important; width: 1px !important; height: 1px !important;
     overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
   #copy-log-btn { align-self: flex-end !important; margin: 0 0 4px !important; flex: 0 0 auto !important; }
+  #case-input-panel { display: flex !important; gap: 6px !important; align-items: center !important;
+    align-self: flex-end !important; margin: 0 0 4px !important; }
+  #case-input-panel input { flex: 1 !important; min-width: 180px !important; padding: 4px 8px !important;
+    font-size: 0.8rem !important; border: 1px solid #ccc !important; border-radius: 6px !important; }
+  #case-input-panel button { font-size: 0.8rem !important; padding: 4px 10px !important; cursor: pointer !important; }
 
   /* Gradio's fill_height relies on flex-grow all the way down, which only
      resolves if html/body actually have a real height to grow into — by
@@ -153,27 +150,68 @@ document.addEventListener('click', function (e) {
   }, 600);
 })();
 
-// "Kopiér chat + fokus-log": reads the hidden #chat-log-data textbox (kept
-// current by respond()'s third yielded value, one block per turn) and
-// writes it straight to the clipboard — for pasting the whole exchange,
-// including what was actually shown/pooled at each step, somewhere else
-// for manual review. Requires the parent page's <iframe> to grant
-// clipboard-write (see app/landing_page.html) since this runs in a
-// cross-origin child frame.
+// "Gem som test-case": click reveals an inline "Forventet resultat" input
+// next to the button; submitting POSTs {expected_result} to /api/cases
+// (see build_app in app/gradio_app.py), which snapshots the current
+// conversation + retrieval state (conversation_state) and writes it to
+// cases/unresolved/ — turning a bug found during manual testing straight
+// into a durable regression case, replayed later by tests/run_case_tests.py
+// once fixed and moved to cases/resolved/. Built via plain DOM manipulation
+// rather than a new Gradio component, same as the button's previous
+// clipboard-only behavior was.
 document.addEventListener('click', function (e) {
   var btn = e.target.closest('#copy-log-btn, #copy-log-btn button');
-  if (!btn) return;
-  var el = document.querySelector('#chat-log-data textarea, #chat-log-data input');
-  var text = el ? el.value : '';
-  var label = btn.tagName === 'BUTTON' ? btn : btn.querySelector('button') || btn;
-  var original = label.textContent;
-  navigator.clipboard.writeText(text || '(ingen beskeder endnu)').then(function () {
-    label.textContent = '✓ Kopieret!';
-    setTimeout(function () { label.textContent = original; }, 1500);
-  }).catch(function () {
-    label.textContent = '⚠ Kunne ikke kopiere';
-    setTimeout(function () { label.textContent = original; }, 1500);
-  });
+  if (btn) {
+    if (document.getElementById('case-input-panel')) return;
+    var label = btn.tagName === 'BUTTON' ? btn : btn.querySelector('button') || btn;
+    var original = label.textContent;
+    label.style.display = 'none';
+
+    var panel = document.createElement('div');
+    panel.id = 'case-input-panel';
+    panel.innerHTML =
+      '<input type="text" id="case-input" placeholder="Forventet resultat...">' +
+      '<button type="button" id="case-save-btn">Gem</button>' +
+      '<button type="button" id="case-cancel-btn">✕</button>';
+    label.parentElement.appendChild(panel);
+    var input = panel.querySelector('#case-input');
+    input.focus();
+
+    function cleanup() {
+      panel.remove();
+      label.style.display = '';
+    }
+
+    function flash(text) {
+      label.textContent = text;
+      setTimeout(function () { label.textContent = original; }, 1500);
+    }
+
+    function submitCase() {
+      var expected = input.value.trim();
+      if (!expected) { input.focus(); return; }
+      fetch('/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expected_result: expected }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('save failed');
+        cleanup();
+        flash('✓ Gemt som sag');
+      }).catch(function () {
+        cleanup();
+        flash('⚠ Kunne ikke gemme');
+      });
+    }
+
+    panel.querySelector('#case-save-btn').addEventListener('click', submitCase);
+    panel.querySelector('#case-cancel-btn').addEventListener('click', cleanup);
+    input.addEventListener('keydown', function (e2) {
+      if (e2.key === 'Enter') submitCase();
+      if (e2.key === 'Escape') cleanup();
+    });
+    return;
+  }
 });
 
 // Gradio's own autoscroll doesn't reliably keep up while streaming inside
@@ -197,144 +235,58 @@ document.addEventListener('click', function (e) {
 """
 
 
-# The model occasionally generates a complete, well-formed product link on
-# its own (having presumably picked up the "[Name](https://.../produkt/SKU)"
-# shape from context) — without protecting those first, the SKU substitution
-# below matches the SKU sitting inside that URL, and the name substitution
-# matches the name sitting inside that link text, each wrapping it AGAIN
-# and producing garbled nested links like "[[Name](url)](url/[SKU](url))".
-_EXISTING_LINK_RE = re.compile(r"\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)")
-
-# The model has occasionally picked up the "[Se alle N <kategori> ->](...)"
-# shape from its own context (the truncation note in products_to_context())
-# and written its own version alongside the one app/gradio_app.py always
-# appends deterministically afterward — producing two "see all" links for
-# the same category with two different labels (the model's own phrasing
-# vs. CATEGORY_LABELS' fixed one). Since the appended one is always
-# correct and the model's is redundant at best, any model-written category
-# link is stripped out before the real one is added — never the reverse.
-_MODEL_CATEGORY_LINK_RE = re.compile(r"\n*\[[^\]]*\]\(https://kjeldbymobler\.dk/kategori/[^\)]+\)")
-
-
-def _safe_stream_prefix(text: str) -> str:
-    """Trim `text` back to before any not-yet-closed markdown link.
-
-    The model occasionally writes its own markdown link (see the comment on
-    `_MODEL_CATEGORY_LINK_RE` above) directly in its streamed reply. Shown
-    token-by-token as-is, that link's raw syntax — a bare "[", then the link
-    text, then "](https://kjeldby..." — is visible mid-stream before it's
-    complete. Holding back everything from the last unresolved "[" onward
-    means the customer only ever sees a link once it's fully formed, never
-    its broken-looking raw markdown while it's still being typed out.
-    """
-    idx = text.rfind("[")
-    if idx == -1:
-        return text
-    close_bracket = text.find("]", idx)
-    if close_bracket == -1 or close_bracket + 1 >= len(text) or text[close_bracket + 1] != "(":
-        return text[:idx]
-    if text.find(")", close_bracket) == -1:
-        return text[:idx]
-    return text
-
-
-def _linkify(text: str, products: list[dict]) -> str:
-    placeholders: dict[str, str] = {}
-
-    def protect(m: re.Match) -> str:
-        key = f"\x00LINK{len(placeholders)}\x00"
-        placeholders[key] = m.group(0)
-        return key
-
-    text = _EXISTING_LINK_RE.sub(protect, text)
-
-    text = _SKU_RE.sub(lambda m: f"[{m.group(0)}]({_PRODUCT_URL.format(sku=m.group(0))})", text)
-
-    names = sorted({p["name"] for p in products}, key=len, reverse=True)
-    name_to_sku = {p["name"]: p["sku"] for p in products}
-    for name in names:
-        sku = name_to_sku[name]
-        pattern = re.compile(rf"\b{re.escape(name)}\b")
-        text = pattern.sub(lambda m, sku=sku: f"[{m.group(0)}]({_PRODUCT_URL.format(sku=sku)})", text)
-
-    for key, original in placeholders.items():
-        text = text.replace(key, original)
-    return text
-
-
-# The fine-tuned model was trained heavily on comma-separated enumeration
-# prose ("X, Y og Z") and doesn't reliably switch to a bullet-list format
-# just from a system-prompt instruction — so runs of 3+ linked products
-# get reformatted into a markdown list here instead of at generation time.
-# The model also isn't consistent about *how* it phrases the enumeration
-# from one sample to the next (quoted vs. unquoted links, an inline price
-# after each one or not), so both an item and the separator between items
-# tolerate that variation rather than matching one exact phrasing.
-_ENUM_PRICE_RE = r"(?:\s*(?:til\s+)?\(?[\d.,]+\s*kr\.?\)?)?"
-_ENUM_ITEM_RE = rf"['\"]?\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)['\"]?{_ENUM_PRICE_RE}"
-# Order matters: the combined "X, Y, og Z" serial-comma form (comma
-# immediately followed by "og") must be tried before the bare comma
-# alternative, or the bare comma matches first, leaves "og [Next Item]"
-# behind (neither remaining alternative can pick that up — "og" itself
-# isn't the required "[" an item starts with, and the leading whitespace
-# a bare " og " match needs was already consumed by the comma's own
-# trailing \s*), and the whole run — and every item after that point —
-# silently falls out of the match instead of getting bulletized.
-_ENUM_SEP_RE = r"(?:,\s+og\s+|,\s*|\s+og\s+)"
-_ENUM_RUN_RE = re.compile(rf"({_ENUM_ITEM_RE}(?:{_ENUM_SEP_RE}{_ENUM_ITEM_RE}){{2,}})\.?")
-
-
-def _bulletize_enumerations(text: str) -> str:
-    def repl(m: re.Match) -> str:
-        items = re.findall(_ENUM_ITEM_RE, m.group(1))
-        return "\n" + "\n".join(f"- {item.strip()}" for item in items) + "\n"
-
-    return _ENUM_RUN_RE.sub(repl, text)
-
-
-# Retrieval often returns more candidates than the model actually names in
-# its reply (e.g. "sofaer under 9000 kr" may retrieve 10 but the reply only
-# lists 4) — narrowing focus to what was actually mentioned keeps the "I
-# fokus" panel in sync with what the customer can see in the chat, instead
-# of showing extra products the reply never brought up.
-_MENTIONED_SKU_RE = re.compile(r"/produkt/(FRN-\d{4})")
-
-
-def _mentioned_products(rendered_text: str, retrieved: list[dict]) -> list[dict]:
-    mentioned_skus = dict.fromkeys(_MENTIONED_SKU_RE.findall(rendered_text))
-    by_sku = {p["sku"]: p for p in retrieved}
-    result = [by_sku[sku] for sku in mentioned_skus if sku in by_sku]
-    return result or retrieved
-
-
-def _reorder_by_mention(rendered_text: str, retrieved: list[dict]) -> list[dict]:
-    """Same idea as `_mentioned_products`, but for a pure follow-up that
-    didn't trigger a fresh retrieval ("which of these has the best
-    reviews?") — the reply may only re-mention one product by name, but
-    that's it picking a winner within the existing set, not narrowing what
-    the set *is*. Whatever got mentioned moves to the front; nothing drops.
-    """
-    mentioned_skus = list(dict.fromkeys(_MENTIONED_SKU_RE.findall(rendered_text)))
-    by_sku = {p["sku"]: p for p in retrieved}
-    mentioned = [by_sku[sku] for sku in mentioned_skus if sku in by_sku]
-    rest = [p for p in retrieved if p["sku"] not in mentioned_skus]
-    return mentioned + rest
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from app.llm_backend import PodChatModel  # noqa: E402
-from catalog.product_format import (  # noqa: E402
-    CATEGORY_LABELS,
-    CATEGORY_LABELS_PLURAL,
-    category_breakdown_to_context,
-    products_to_context,
+from app.conversation import (  # noqa: E402
+    build_prompt,
+    finalize_turn,
+    focus_payload,
+    _safe_stream_prefix,
 )
-from config import BASE_MODEL_ID, CATEGORY_URL_BASE, RETRIEVAL_TOP_K, SYSTEM_PROMPT_TEMPLATE  # noqa: E402
+from app.llm_backend import PodChatModel  # noqa: E402
+from config import BASE_MODEL_ID, CASES_UNRESOLVED_DIR, RETRIEVAL_TOP_K  # noqa: E402
 from rag.retriever import ProductRetriever  # noqa: E402
 
 
-def build_app(model_name: str, base_url: str) -> gr.Blocks:
+def build_app(app: FastAPI, model_name: str, base_url: str) -> gr.Blocks:
     retriever = ProductRetriever()
     model = PodChatModel(model=model_name, base_url=base_url)
+
+    # search.html (served statically from the landing site on :8080) calls
+    # back into these routes on :7860 — a genuine cross-origin request from
+    # the browser's point of view, so it needs CORS, unlike the chat iframe
+    # (which talks to its parent via postMessage, not fetch).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:8080"],
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/api/autocomplete")
+    def api_autocomplete(q: str = "") -> list[dict]:
+        q_norm = q.strip().lower()
+        if not q_norm:
+            return []
+        matches = []
+        for p in retriever.products:
+            if q_norm in p["name"].lower() or q_norm in p["sku"].lower():
+                matches.append({"sku": p["sku"], "name": p["name"], "category": p["category"]})
+                if len(matches) >= 10:
+                    break
+        return matches
+
+    @app.get("/api/search")
+    def api_search(q: str = "") -> dict:
+        # Stateless single-shot query, no `focus` pool from a prior turn —
+        # this endpoint exists to inspect what the retriever does with one
+        # query in isolation, the same thing every chat turn starts from.
+        result = retriever.retrieve(q, top_k=RETRIEVAL_TOP_K)
+        return {
+            "shown": [p["sku"] for p in result.shown],
+            "pool": [p["sku"] for p in result.pool],
+            "total_count": result.total_count,
+            "category_breakdown": result.category_breakdown,
+        }
 
     # Single-user local POC, so plain closure variables are enough to track
     # conversation state across turns — a multi-session deployment would
@@ -367,27 +319,20 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
     # and the product's own exact string is what gets displayed either way.
     color_state: dict[str, set[str]] = {"colors": set()}
 
-    def _focus_payload(products: list[dict], detected_colors_lower: set[str]) -> str:
-        return json.dumps([
-            {
-                "sku": p["sku"],
-                "name": p["name"],
-                "category": p["category"],
-                "price": p.get("discount_price") or p["normal_price"],
-                "normal_price": p["normal_price"],
-                "discount_percent": p.get("discount_percent") or 0,
-                "selected_color": next(
-                    (c for c in p.get("colors", []) if c.lower() in detected_colors_lower), None
-                ),
-            }
-            for p in products[:8]
-        ])
-
     # Plain-text conversation + focus-state log, one block per turn, for the
-    # "Kopiér chat + fokus-log" button below — lets manual testing paste the
-    # whole exchange (including what was actually shown/pooled, not just
-    # what's visible in the chat bubbles) somewhere else for review.
+    # "Gem som test-case" button below — lets manual testing read the whole
+    # exchange (including what was actually shown/pooled, not just what's
+    # visible in the chat bubbles) at a glance.
     chat_log_state: dict[str, list[str]] = {"turns": []}
+
+    # Structured, replayable counterpart to chat_log_state: `messages` is
+    # exactly the {"role", "content"} shape model.chat()/chat_stream()
+    # expect as `history`, so a saved case (see /api/cases below) can be
+    # fed straight back through build_prompt/model.chat/finalize_turn by
+    # tests/run_case_tests.py without needing to reparse the plain-text
+    # log. `turns` carries the retrieval outcome per turn (not derivable
+    # from the reply text alone) for the same replay/judging use.
+    conversation_state: dict[str, list] = {"messages": [], "turns": []}
 
     def _log_turn(turn_num: int, message: str, rendered: str, result, new_colors: set[str]) -> None:
         colors_line = ", ".join(sorted(new_colors)) or "(ingen)"
@@ -416,6 +361,15 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
             f"{focus_block}"
             f"  Aktive farver: {colors_line}\n"
         )
+        conversation_state["messages"].append({"role": "user", "content": message})
+        conversation_state["messages"].append({"role": "assistant", "content": rendered})
+        conversation_state["turns"].append({
+            "shown_skus": [p["sku"] for p in result.shown],
+            "pool_size": len(result.pool),
+            "total_count": result.total_count,
+            "category_breakdown": result.category_breakdown,
+            "colors": sorted(new_colors),
+        })
 
     def _chat_log_text() -> str:
         return "\n".join(chat_log_state["turns"])
@@ -430,117 +384,85 @@ def build_app(model_name: str, base_url: str) -> gr.Blocks:
         previous_shown = shown_state["products"]
         previous_colors = color_state["colors"]
         previous_log_text = _chat_log_text()
-        result = retriever.retrieve(message, top_k=RETRIEVAL_TOP_K, focus=previous_pool)
-        # Computed once up front (not just when narrowing focus at the end)
-        # so the "see all" link below can carry the same active color
-        # filter into the category modal — otherwise "Se alle 10 røde
-        # kontorstole" would open the modal to all 75 unfiltered, a mismatch
-        # between what the link promises and what clicking it shows.
-        detected_colors = retriever.detect_colors(message)
-        new_colors = {c.lower() for c in detected_colors} if detected_colors else previous_colors
-        context = (
-            category_breakdown_to_context(result.category_breakdown)
-            if result.category_breakdown
-            else products_to_context(result.shown, result.total_count)
-        )
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
-        previous_shown_json = _focus_payload(previous_shown, previous_colors)
+
+        prompt = build_prompt(retriever, message, previous_pool)
+        previous_shown_json = focus_payload(previous_shown, previous_colors)
 
         # Linkifying/bulletizing during streaming caused a visible flip once
         # a product name or SKU completed mid-token — it showed as plain
         # text while partial, then suddenly re-rendered as a link. Streaming
         # the raw text avoids that; the fully-formatted version is swapped
-        # in as a single atomic update once the reply is done. Separately,
-        # _safe_stream_prefix holds back any markdown link the model is
-        # mid-way through writing itself, so its raw "[...](https://..."
-        # syntax is never shown broken — only once complete, or once the
-        # full reply lands below.
+        # in as a single atomic update once the reply is done (see
+        # finalize_turn). Separately, _safe_stream_prefix holds back any
+        # markdown link the model is mid-way through writing itself, so its
+        # raw "[...](https://..." syntax is never shown broken — only once
+        # complete, or once the full reply lands below.
         partial = ""
-        for token in model.chat_stream(system_prompt, message, history=history):
+        for token in model.chat_stream(prompt.system_prompt, message, history=history):
             partial += token
             yield _safe_stream_prefix(partial), previous_shown_json, previous_log_text
 
-        rendered = _bulletize_enumerations(_linkify(partial, result.shown))
-        rendered = _MODEL_CATEGORY_LINK_RE.sub("", rendered).rstrip()
+        turn = finalize_turn(partial, prompt, previous_pool, previous_shown, previous_colors)
+        yield turn.rendered, previous_shown_json, previous_log_text
 
-        # More matched than were shown: append a deterministic link to the
-        # category-table modal rather than trusting the (un-fine-tuned)
-        # model to construct the URL itself — same reliability reasoning as
-        # why product links are code-appended via _linkify rather than
-        # generated by the model.
-        if result.category_breakdown:
-            # One link per category, largest first, so the customer can
-            # jump straight to whichever type they actually meant.
-            for category, count in sorted(result.category_breakdown.items(), key=lambda item: -item[1]):
-                label = CATEGORY_LABELS_PLURAL.get(category, category)
-                url = CATEGORY_URL_BASE.format(category=category)
-                rendered += f"\n\n[Se alle {count} {label} →]({url})"
-        elif result.total_count > len(result.shown) and result.shown:
-            category = result.shown[0]["category"]
-            label = CATEGORY_LABELS.get(category, category)
-            see_all_url = CATEGORY_URL_BASE.format(category=category)
-            # Only attach a color filter freshly named THIS turn, not one
-            # merely carried over from a prior turn (new_colors falls back
-            # to previous_colors when nothing new was detected) — a stale
-            # color from an earlier, unrelated topic could otherwise get
-            # attached to a category it was never actually filtered by.
-            if detected_colors:
-                see_all_url += "?farver=" + quote(json.dumps(sorted(detected_colors)))
-            rendered += f"\n\n[Se alle {result.total_count} {label} →]({see_all_url})"
+        pool_state["products"] = turn.new_pool
+        shown_state["products"] = turn.new_shown
+        color_state["colors"] = turn.new_colors
 
-        yield rendered, previous_shown_json, previous_log_text
-
-        if result.category_breakdown:
+        if turn.is_disambiguation:
             # A bare generic disambiguation term ("stole") is always a
             # fresh topic, not a continuation — any prior pool/shown no
             # longer applies once we've asked the customer to pick a type.
-            pool_state["products"] = []
-            shown_state["products"] = []
-            _log_turn(len(chat_log_state["turns"]) + 1, message, rendered, result, previous_colors)
-            yield rendered, _focus_payload([], previous_colors), _chat_log_text()
+            _log_turn(len(chat_log_state["turns"]) + 1, message, turn.rendered, prompt.result, previous_colors)
+            yield turn.rendered, focus_payload([], previous_colors), _chat_log_text()
             return
 
-        if result.pool:
-            pool_state["products"] = result.pool
-
-        if result.shown:
-            # A pure carryover follow-up ("which of these has the best
-            # reviews?") returns the exact same shown set it was given —
-            # nothing new was searched for, so a reply naming just one
-            # product is picking a winner, not narrowing the set itself.
-            # This only reorders the small displayed set for the focus
-            # panel — it never affects pool_state (see the comment above).
-            is_pure_carryover = {p["sku"] for p in result.shown} == {p["sku"] for p in previous_shown}
-            if is_pure_carryover:
-                mentioned = _reorder_by_mention(rendered, result.shown)
-            else:
-                mentioned = _mentioned_products(rendered, result.shown)
-            shown_state["products"] = mentioned
-            color_state["colors"] = new_colors
-            _log_turn(len(chat_log_state["turns"]) + 1, message, rendered, result, new_colors)
-            yield rendered, _focus_payload(mentioned, new_colors), _chat_log_text()
-        else:
-            _log_turn(len(chat_log_state["turns"]) + 1, message, rendered, result, previous_colors)
-            yield rendered, previous_shown_json, _chat_log_text()
+        _log_turn(len(chat_log_state["turns"]) + 1, message, turn.rendered, prompt.result, turn.new_colors)
+        yield turn.rendered, focus_payload(turn.new_shown, turn.new_colors), _chat_log_text()
 
     def reset_focus() -> tuple[str, str]:
         pool_state["products"] = []
         shown_state["products"] = []
         color_state["colors"] = set()
         chat_log_state["turns"] = []
-        return _focus_payload([], set()), _chat_log_text()
+        conversation_state["messages"] = []
+        conversation_state["turns"] = []
+        return focus_payload([], set()), _chat_log_text()
+
+    # "Gem som test-case" (client-side, see PRODUCT_LINK_SCRIPT) POSTs here
+    # once the tester has typed what they expected — snapshots the current
+    # conversation + retrieval state into cases/unresolved/ for later
+    # regression testing (tests/run_case_tests.py) once the bug it captured
+    # gets fixed. Same-origin call (this route and the iframe that calls it
+    # both live on :7860), unlike /api/search — no CORS needed here.
+    @app.post("/api/cases")
+    def save_case(payload: dict) -> dict:
+        expected_result = (payload.get("expected_result") or "").strip()
+        case_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+        case = {
+            "id": case_id,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "expected_result": expected_result,
+            "chat_log_text": _chat_log_text(),
+            "messages": conversation_state["messages"],
+            "turns": conversation_state["turns"],
+        }
+        path = CASES_UNRESOLVED_DIR / f"{case_id}.json"
+        path.write_text(json.dumps(case, indent=2, ensure_ascii=False))
+        return {"ok": True, "path": str(path)}
 
     with gr.Blocks(title="Kjeldby Møbler", fill_width=True, fill_height=True) as demo:
         focus_data = gr.Textbox(elem_id="focus-data", show_label=False, container=False)
-        # Hidden carrier for the plain-text chat+focus log — read and copied
-        # to the clipboard by the "Kopiér chat + fokus-log" button below, via
-        # the same CSS-hide + JS-poll relay PRODUCT_LINK_SCRIPT already uses
-        # for focus-data (see its comment for why polling, not visible=False).
+        # Hidden carrier for the plain-text chat+focus log — shown to the
+        # tester (read client-side by PRODUCT_LINK_SCRIPT) alongside the
+        # "Gem som test-case" button below, via the same CSS-hide + JS-poll
+        # relay PRODUCT_LINK_SCRIPT already uses for focus-data (see its
+        # comment for why polling, not visible=False).
         chat_log_data = gr.Textbox(elem_id="chat-log-data", show_label=False, container=False)
         # Not wired to any server-side handler — PRODUCT_LINK_SCRIPT below
-        # handles its click entirely client-side (read #chat-log-data,
-        # write to clipboard).
-        gr.Button("📋 Kopiér chat + fokus-log", elem_id="copy-log-btn", size="sm")
+        # handles its click entirely client-side (reveal an inline
+        # "Forventet resultat" input, then POST to /api/cases on submit).
+        gr.Button("🐞 Gem som test-case", elem_id="copy-log-btn", size="sm")
         chat = gr.ChatInterface(
             fn=respond,
             chatbot=gr.Chatbot(height="100%", buttons=[], feedback_options=None),
@@ -564,11 +486,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=BASE_MODEL_ID, help="Model name as served by vLLM on the pod")
     parser.add_argument("--base-url", default="http://localhost:8000/v1", help="vLLM OpenAI-compatible base URL (reach via SSH tunnel)")
-    parser.add_argument("--share", action="store_true")
     args = parser.parse_args()
 
-    demo = build_app(args.model, args.base_url)
-    demo.launch(share=args.share, footer_links=[], head=PRODUCT_LINK_SCRIPT)
+    # Built as a plain FastAPI app with the Gradio UI mounted into it
+    # (rather than demo.launch()) so /api/autocomplete and /api/search
+    # (see build_app) can be served from the same process — reusing the
+    # already-loaded retriever (embedding model + cross-encoder + FAISS
+    # index) instead of a second process paying to load it again.
+    app = FastAPI()
+    demo = build_app(app, args.model, args.base_url)
+    app = gr.mount_gradio_app(app, demo, path="/", head=PRODUCT_LINK_SCRIPT, footer_links=[])
+    uvicorn.run(app, host="0.0.0.0", port=7860)
 
 
 if __name__ == "__main__":

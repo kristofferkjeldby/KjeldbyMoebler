@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Søg — Kjeldby Møbler</title>
+<link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+
+<header class="hero" style="padding: 60px 24px 50px;">
+  <div class="brand">Kjeldby Møbler</div>
+  <h1 style="font-size: clamp(1.8rem, 4vw, 2.6rem);">Søg i katalog</h1>
+  <p>Direkte søgning mod den samme retriever som chatten bruger — til manuel test af søgeresultater uden om modellen.</p>
+</header>
+
+<nav class="subnav">
+  <a href="landing_page.html">← Forsiden</a>
+</nav>
+
+<main style="padding: 32px 24px;">
+  <section>
+    <div class="search-box" id="search-box">
+      <form id="search-form">
+        <input type="text" id="search-input" placeholder="F.eks. &quot;hjørnesofa i grå&quot; eller &quot;stole&quot;" autocomplete="off">
+        <button type="submit">Søg</button>
+      </form>
+      <div class="autocomplete-list" id="autocomplete-list"></div>
+    </div>
+
+    <div id="disambig-section" style="display:none;"></div>
+
+    <div id="results-section" style="display:none;">
+      <p class="results-summary" id="results-summary"></p>
+      <div class="results-card">
+        <table class="product-table" id="search-results-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th class="sortable" data-sort="name">Navn <span class="sort-arrow">▲</span></th>
+              <th class="sortable" data-sort="price">Pris <span class="sort-arrow">▲</span></th>
+              <th>Farver</th>
+              <th class="sortable" data-sort="material">Materiale <span class="sort-arrow">▲</span></th>
+              <th class="sortable" data-sort="rating">Bedømmelse <span class="sort-arrow">▲</span></th>
+            </tr>
+          </thead>
+          <tbody id="search-results-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Duplicated from landing_page.html (same element IDs) — static/site.js
+     wires up openProductModal/openCategoryModal against these at load
+     time regardless of which page includes it, so both pages need the
+     same modal markup present. -->
+<div class="modal-overlay" id="category-modal">
+  <div class="modal-card wide">
+    <button class="modal-close" id="category-modal-close" aria-label="Luk">✕</button>
+    <div class="table-modal-head">
+      <h3 id="category-modal-title"></h3>
+      <span class="count" id="category-modal-count"></span>
+    </div>
+    <div class="table-modal-wrap">
+      <table class="product-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="sortable" data-sort="name">Navn <span class="sort-arrow">▲</span></th>
+            <th class="sortable" data-sort="price">Pris <span class="sort-arrow">▲</span></th>
+            <th>Farver</th>
+            <th class="sortable" data-sort="material">Materiale <span class="sort-arrow">▲</span></th>
+            <th class="sortable" data-sort="rating">Bedømmelse <span class="sort-arrow">▲</span></th>
+          </tr>
+        </thead>
+        <tbody id="category-modal-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="product-modal">
+  <div class="modal-card">
+    <button class="modal-close" id="modal-close" aria-label="Luk">✕</button>
+    <img class="modal-img" id="modal-img" src="" alt="">
+    <div class="modal-body">
+      <div class="modal-cat" id="modal-cat"></div>
+      <h3 id="modal-name"></h3>
+      <p class="modal-desc" id="modal-desc"></p>
+      <div class="modal-price" id="modal-price"></div>
+      <div class="modal-facts" id="modal-facts"></div>
+      <div class="modal-stock">
+        <h4>Lagerstatus pr. butik</h4>
+        <ul id="modal-stock-list"></ul>
+      </div>
+      <button class="modal-cart-btn" id="modal-cart-btn">Tilføj til kurv</button>
+    </div>
+  </div>
+</div>
+
+<script src="static/site.js"></script>
+<script src="static/search.js"></script>
+
+</body>
+</html>

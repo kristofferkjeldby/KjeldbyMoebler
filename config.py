@@ -158,6 +158,16 @@ RAW_ANSWERS_PATH = RESULTS_DIR / "raw_answers.jsonl"
 JUDGED_RESULTS_PATH = RESULTS_DIR / "judged_results.jsonl"
 REPORT_PATH = RESULTS_DIR / "report.md"
 
+# --- Cases: manual-testing bug reports captured from the chat's "Gem som
+# test-case" button (app/gradio_app.py), turned into durable regression
+# tests. A case starts in CASES_UNRESOLVED_DIR; once the underlying bug is
+# fixed, moving the file to CASES_RESOLVED_DIR (a plain `mv`, no tooling)
+# makes tests/run_case_tests.py replay and judge it on every future run. ---
+CASES_DIR = ROOT / "cases"
+CASES_UNRESOLVED_DIR = CASES_DIR / "unresolved"
+CASES_RESOLVED_DIR = CASES_DIR / "resolved"
+CASES_RESULTS_DIR = CASES_DIR / "results"
+
 # --- Chat / system prompt (used identically in training data and inference) ---
 SYSTEM_PROMPT_TEMPLATE = """Du er en venlig og kyndig assistent i en møbelforretning. \
 Butikken har tre afdelinger: København, Århus og Odense.
@@ -335,5 +345,8 @@ DIM_KEYWORDS = {
 # mangles them, splitting one Danish word into fragments.
 WORD_CHARS = "a-zæøå0-9"
 
-for _dir in (CATALOG_DIR, RAG_DIR, TRAINING_DIR, EVAL_DIR, RESULTS_DIR):
+for _dir in (
+    CATALOG_DIR, RAG_DIR, TRAINING_DIR, EVAL_DIR, RESULTS_DIR,
+    CASES_UNRESOLVED_DIR, CASES_RESOLVED_DIR, CASES_RESULTS_DIR,
+):
     _dir.mkdir(parents=True, exist_ok=True)

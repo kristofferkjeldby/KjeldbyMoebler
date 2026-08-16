@@ -70,27 +70,36 @@ class ImageService:
     def category_folder(self, category: str) -> str:
         return CATEGORY_FOLDERS.get(category, category)
 
+    def _first_existing(self, *candidates: Path) -> Path | None:
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
     def resolve(self, sku: str, category: str, color: str | None = None) -> Path | None:
         """Most-specific-first fallback: product+color -> product default ->
         category default. Returns None only if even the category default is
-        missing (shouldn't happen once the catalog is generated)."""
+        missing (shouldn't happen once the catalog is generated).
+
+        Each tier tries .jpg before .png — real generated photos
+        (catalog/generate_product_images.py) are JPEGs; .png remains for
+        the original hand-made category source photos and any leftover
+        symlink scaffolding (catalog/generate_image_catalog.py)."""
         cat_folder = self.category_folder(category)
         product_dir = self.root / cat_folder / sku
 
         if color:
-            color_path = product_dir / f"{slugify(color)}.png"
-            if color_path.exists():
-                return color_path
+            slug = slugify(color)
+            found = self._first_existing(product_dir / f"{slug}.jpg", product_dir / f"{slug}.png")
+            if found:
+                return found
 
-        product_default = product_dir / "default.png"
-        if product_default.exists():
-            return product_default
+        found = self._first_existing(product_dir / "default.jpg", product_dir / "default.png")
+        if found:
+            return found
 
-        category_default = self.root / cat_folder / "default.png"
-        if category_default.exists():
-            return category_default
-
-        return None
+        category_default = self.root / cat_folder
+        return self._first_existing(category_default / "default.jpg", category_default / "default.png")
 
     def resolve_url(self, sku: str, category: str, color: str | None = None) -> str | None:
         """Same as `resolve`, but as a path relative to app/images/ (what

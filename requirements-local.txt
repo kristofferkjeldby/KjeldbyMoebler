@@ -6,5 +6,7 @@ requests>=2.31.0
 sentence-transformers>=3.0.0
 faiss-cpu>=1.8.0
 gradio>=6.0.0
+fastapi>=0.110.0
+uvicorn>=0.30.0
 numpy>=1.26.0
 pytest>=8.0.0

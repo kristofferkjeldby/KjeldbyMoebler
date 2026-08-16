@@ -53,10 +53,13 @@ class ClaudeStructuredClient:
         self.client = anthropic.Anthropic()
 
     def generate(self, prompt: str, schema: dict, max_tokens: int, temperature: float = 0.4) -> dict:
+        # `temperature` is rejected (400 invalid_request_error, "deprecated
+        # for this model") by claude-sonnet-5 — the param is kept on this
+        # method for interface parity with LocalStructuredClient, just not
+        # forwarded to the API call for this backend.
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
-            temperature=temperature,
             output_config={"format": {"type": "json_schema", "schema": schema}},
             messages=[{"role": "user", "content": prompt}],
         )

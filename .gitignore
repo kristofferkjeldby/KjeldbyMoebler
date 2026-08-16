@@ -9,6 +9,7 @@ __pycache__/
 # Generated data / large artifacts — regenerate via the scripts, don't commit
 catalog/data/*.json
 catalog/data/*.csv
+catalog/data/*.log
 app/data/*.json
 rag/data/*.index
 rag/data/*.json

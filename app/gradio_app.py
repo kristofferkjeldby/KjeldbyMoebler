@@ -269,8 +269,18 @@ def build_app(app: FastAPI, model_name: str, base_url: str) -> gr.Blocks:
             return []
         matches = []
         for p in retriever.products:
-            if q_norm in p["name"].lower() or q_norm in p["sku"].lower():
-                matches.append({"sku": p["sku"], "name": p["name"], "category": p["category"]})
+            name_match = q_norm in p["name"].lower() or q_norm in p["sku"].lower()
+            # A bare color term ("grå") on its own rarely appears in a
+            # product's name, so matching only name/SKU left autocomplete
+            # blind to color queries even though /api/search's underlying
+            # retriever already handles them fine — check the product's own
+            # colors too so a color-only query surfaces real suggestions.
+            matched_color = next((c for c in p.get("colors", []) if q_norm in c.lower()), None)
+            if name_match or matched_color:
+                matches.append({
+                    "sku": p["sku"], "name": p["name"], "category": p["category"],
+                    "matched_color": matched_color,
+                })
                 if len(matches) >= 10:
                     break
         return matches

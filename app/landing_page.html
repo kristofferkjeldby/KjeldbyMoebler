@@ -217,7 +217,12 @@
 <div class="modal-overlay" id="product-modal">
   <div class="modal-card">
     <button class="modal-close" id="modal-close" aria-label="Luk">✕</button>
-    <img class="modal-img" id="modal-img" src="" alt="">
+    <div class="modal-img-wrap">
+      <img class="modal-img" id="modal-img" src="" alt="">
+      <button class="modal-img-nav prev" id="modal-img-prev" type="button" aria-label="Forrige farve">‹</button>
+      <button class="modal-img-nav next" id="modal-img-next" type="button" aria-label="Næste farve">›</button>
+      <div class="modal-img-color-label" id="modal-img-color-label"></div>
+    </div>
     <div class="modal-body">
       <div class="modal-cat" id="modal-cat"></div>
       <h3 id="modal-name"></h3>

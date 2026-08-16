@@ -267,6 +267,12 @@ def main() -> None:
     parser.add_argument("--sku", action="append", help="Only process this SKU (repeatable) — for spot-fixing individual products after a full run")
     parser.add_argument("--limit", type=int, help="Only process the first N matching products")
     parser.add_argument("--force", action="store_true", help="Regenerate even if files already exist")
+    parser.add_argument(
+        "--seed-offset", type=int, default=0,
+        help="Shift the per-product seed by this amount — the seed is deterministic from the SKU alone, "
+             "so re-running with --force and no offset reproduces byte-identical images. Pass a nonzero "
+             "offset (e.g. 1, 2, ...) to actually get a different result when regenerating a flagged SKU.",
+    )
     parser.add_argument("--start-after", help="Skip products up to and including this SKU (resume aid)")
     args = parser.parse_args()
 
@@ -312,7 +318,7 @@ def main() -> None:
         # (base + each color), not carried forward through one Generator
         # object, matching the pilot: identical starting noise per call is
         # part of what keeps structure consistent across color variants.
-        seed = int(sku.split("-")[-1])
+        seed = int(sku.split("-")[-1]) + args.seed_offset * 104729  # large prime step, decorrelates offsets
 
         default_path = product_dir / "default.jpg"
         first_color_path = product_dir / f"{slugify(colors[0])}.jpg"

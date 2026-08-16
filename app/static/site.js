@@ -190,11 +190,41 @@ document.querySelectorAll(".cat-card[data-category]").forEach(el => {
   el.addEventListener("click", () => openCategoryModal(el.dataset.category));
 });
 
+// Lets the product modal's image step through the product's other colors
+// via prev/next arrows, without needing a separate fetch — colors and
+// their photos are already in PRODUCTS/IMAGE_MANIFEST.
+let modalColorState = { sku: null, category: null, colors: [] };
+
+function setModalColorIndex(index) {
+  const { sku, category, colors } = modalColorState;
+  const n = colors.length;
+  const wrapped = ((index % n) + n) % n;
+  modalColorState.index = wrapped;
+  document.getElementById("modal-img").src = productImage(sku, category, colors[wrapped]);
+  document.getElementById("modal-img-color-label").textContent = colors[wrapped];
+}
+
 function openProductModal(sku, color) {
   const p = PRODUCTS[sku];
   if (!p) return;
 
-  document.getElementById("modal-img").src = productImage(sku, p.category, color || null);
+  const colors = p.colors || [];
+  const navEls = [
+    document.getElementById("modal-img-prev"),
+    document.getElementById("modal-img-next"),
+    document.getElementById("modal-img-color-label"),
+  ];
+  if (colors.length > 1) {
+    modalColorState = { sku, category: p.category, colors };
+    const startIndex = color ? colors.findIndex(c => c.toLowerCase() === color.toLowerCase()) : 0;
+    navEls.forEach(el => { el.style.display = "block"; });
+    setModalColorIndex(startIndex === -1 ? 0 : startIndex);
+  } else {
+    modalColorState = { sku: null, category: null, colors: [] };
+    navEls.forEach(el => { el.style.display = "none"; });
+    document.getElementById("modal-img").src = productImage(sku, p.category, color || null);
+  }
+
   document.getElementById("modal-cat").textContent = CATEGORY_LABELS[p.category] || p.category;
   document.getElementById("modal-name").textContent = p.name;
   document.getElementById("modal-desc").textContent = p.short_description || "";
@@ -243,6 +273,15 @@ document.getElementById("modal-cart-btn").addEventListener("click", function () 
   this.classList.add("added");
 });
 
+document.getElementById("modal-img-prev").addEventListener("click", e => {
+  e.stopPropagation();
+  if (modalColorState.colors.length) setModalColorIndex(modalColorState.index - 1);
+});
+document.getElementById("modal-img-next").addEventListener("click", e => {
+  e.stopPropagation();
+  if (modalColorState.colors.length) setModalColorIndex(modalColorState.index + 1);
+});
+
 function closeProductModal() {
   document.getElementById("product-modal").classList.remove("open");
 }
@@ -252,9 +291,15 @@ document.getElementById("product-modal").addEventListener("click", e => {
   if (e.target.id === "product-modal") closeProductModal();
 });
 document.addEventListener("keydown", e => {
-  if (e.key !== "Escape") return;
-  closeProductModal();
-  closeCategoryModal();
+  if (e.key === "Escape") {
+    closeProductModal();
+    closeCategoryModal();
+    return;
+  }
+  if (!modalColorState.colors.length) return;
+  if (!document.getElementById("product-modal").classList.contains("open")) return;
+  if (e.key === "ArrowLeft") setModalColorIndex(modalColorState.index - 1);
+  if (e.key === "ArrowRight") setModalColorIndex(modalColorState.index + 1);
 });
 
 document.querySelectorAll(".series-card li .pname[data-sku]").forEach(el => {

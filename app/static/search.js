@@ -36,12 +36,16 @@ function fetchAutocomplete(q) {
         hideAutocomplete();
         return;
       }
-      autocompleteList.innerHTML = items.map(it =>
-        '<div class="autocomplete-item" data-sku="' + it.sku + '">' +
-          '<span class="ac-name">' + it.name + '</span>' +
-          '<span class="ac-cat">' + (CATEGORY_LABELS[it.category] || it.category) + '</span>' +
-        '</div>'
-      ).join("");
+      autocompleteList.innerHTML = items.map(it => {
+        const catLabel = CATEGORY_LABELS[it.category] || it.category;
+        const rightLabel = it.matched_color ? catLabel + " · " + it.matched_color : catLabel;
+        return (
+          '<div class="autocomplete-item" data-sku="' + it.sku + '">' +
+            '<span class="ac-name">' + it.name + '</span>' +
+            '<span class="ac-cat">' + rightLabel + '</span>' +
+          '</div>'
+        );
+      }).join("");
       autocompleteList.style.display = "block";
       autocompleteList.querySelectorAll(".autocomplete-item").forEach(el => {
         el.addEventListener("click", () => {

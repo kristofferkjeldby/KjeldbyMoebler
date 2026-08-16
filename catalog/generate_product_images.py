@@ -261,6 +261,92 @@ def write_image(image: Image.Image, path: Path) -> None:
     image.save(path, "JPEG", quality=JPEG_QUALITY)
 
 
+def generate_product(
+    product: dict, vocab: dict, base_pipe, cn_pipe, rembg_session, seed_offset: int, force: bool,
+) -> tuple[bool, str | None]:
+    """Generates (or, with force=True, regenerates) one product's default +
+    all color-variant photos. Returns (ok, error_message) — error_message is
+    None on success. Shared by main()'s CLI loop and catalog/regen_server.py
+    (the persistent pod-side server backing the review UI), so both stay on
+    one implementation instead of drifting apart."""
+    sku = product["sku"]
+    category = product["category"]
+    cat_folder = CATEGORY_FOLDERS.get(category, category)
+    product_dir = PRODUCTS_ROOT / cat_folder / sku
+    material_phrase = vocab["materials"].get(product["material"], product["material"])
+    colors = product["colors"]
+
+    # Deterministic per-product seed (stable across reruns) — the same
+    # numeric seed is reused fresh for every image of this product (base +
+    # each color), not carried forward through one Generator object,
+    # matching the pilot: identical starting noise per call is part of what
+    # keeps structure consistent across color variants.
+    seed = int(sku.split("-")[-1]) + seed_offset * 104729  # large prime step, decorrelates offsets
+
+    default_path = product_dir / "default.jpg"
+    first_color_path = product_dir / f"{slugify(colors[0])}.jpg"
+    neg_prompt = build_neg_prompt(category)
+
+    try:
+        if force or not is_real_file(default_path):
+            color_phrase = vocab["colors"].get(colors[0], colors[0])
+            prompt = build_prompt(category, material_phrase, color_phrase)
+            base_clean, ok = generate_clean(
+                lambda gen: base_pipe(
+                    prompt, negative_prompt=neg_prompt, num_inference_steps=STEPS, generator=gen,
+                ).images[0],
+                seed, rembg_session, size=1024,
+            )
+            if not ok:
+                raise RuntimeError(f"base image still looked like a multi-view collage after {MAX_GEN_ATTEMPTS} attempts")
+            write_image(base_clean, default_path)
+            write_image(base_clean, first_color_path)
+        else:
+            base_clean = Image.open(default_path).convert("RGB")
+
+        if len(colors) > 1:
+            canny = canny_edges(base_clean)
+            for color in colors[1:]:
+                color_path = product_dir / f"{slugify(color)}.jpg"
+                if not force and is_real_file(color_path):
+                    continue
+                color_phrase = vocab["colors"].get(color, color)
+                prompt = build_prompt(category, material_phrase, color_phrase)
+                variant_clean, ok = generate_clean(
+                    lambda gen: cn_pipe(
+                        prompt, negative_prompt=neg_prompt, image=canny,
+                        num_inference_steps=STEPS, controlnet_conditioning_scale=CONTROLNET_SCALE,
+                        generator=gen,
+                    ).images[0],
+                    seed, rembg_session, size=1024,
+                )
+                if not ok:
+                    raise RuntimeError(f"{color!r} variant still looked like a multi-view collage after {MAX_GEN_ATTEMPTS} attempts")
+                write_image(variant_clean, color_path)
+
+        return True, None
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
+def load_pipelines():
+    """Loads the SDXL + ControlNet pipelines and rembg session — the ~20-30s
+    startup cost shared by main() (paid once per CLI invocation) and
+    catalog/regen_server.py (paid once at server startup, then reused
+    across every /regenerate request)."""
+    base_pipe = AutoPipelineForText2Image.from_pretrained(
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16"
+    ).to("cuda")
+    controlnet = ControlNetModel.from_pretrained(
+        "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+    )
+    cn_pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
+    ).to("cuda")
+    rembg_session = new_session("isnet-general-use")
+    return base_pipe, cn_pipe, rembg_session
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--category", help="Only process this category")
@@ -293,82 +379,21 @@ def main() -> None:
 
     print(f"Processing {len(products)} product(s)...")
 
-    base_pipe = AutoPipelineForText2Image.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16"
-    ).to("cuda")
-    controlnet = ControlNetModel.from_pretrained(
-        "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
-    )
-    cn_pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
-    ).to("cuda")
-    rembg_session = new_session("isnet-general-use")
+    base_pipe, cn_pipe, rembg_session = load_pipelines()
 
     done = 0
     for product in products:
         sku = product["sku"]
-        category = product["category"]
-        cat_folder = CATEGORY_FOLDERS.get(category, category)
-        product_dir = PRODUCTS_ROOT / cat_folder / sku
-        material_phrase = vocab["materials"].get(product["material"], product["material"])
-        colors = product["colors"]
-
-        # Deterministic per-product seed (stable across reruns) — the same
-        # numeric seed is reused fresh for every image of this product
-        # (base + each color), not carried forward through one Generator
-        # object, matching the pilot: identical starting noise per call is
-        # part of what keeps structure consistent across color variants.
-        seed = int(sku.split("-")[-1]) + args.seed_offset * 104729  # large prime step, decorrelates offsets
-
-        default_path = product_dir / "default.jpg"
-        first_color_path = product_dir / f"{slugify(colors[0])}.jpg"
-        neg_prompt = build_neg_prompt(category)
-
-        try:
-            if args.force or not is_real_file(default_path):
-                color_phrase = vocab["colors"].get(colors[0], colors[0])
-                prompt = build_prompt(category, material_phrase, color_phrase)
-                base_clean, ok = generate_clean(
-                    lambda gen: base_pipe(
-                        prompt, negative_prompt=neg_prompt, num_inference_steps=STEPS, generator=gen,
-                    ).images[0],
-                    seed, rembg_session, size=1024,
-                )
-                if not ok:
-                    raise RuntimeError(f"base image still looked like a multi-view collage after {MAX_GEN_ATTEMPTS} attempts")
-                write_image(base_clean, default_path)
-                write_image(base_clean, first_color_path)
-            else:
-                base_clean = Image.open(default_path).convert("RGB")
-
-            if len(colors) > 1:
-                canny = canny_edges(base_clean)
-                for color in colors[1:]:
-                    color_path = product_dir / f"{slugify(color)}.jpg"
-                    if not args.force and is_real_file(color_path):
-                        continue
-                    color_phrase = vocab["colors"].get(color, color)
-                    prompt = build_prompt(category, material_phrase, color_phrase)
-                    variant_clean, ok = generate_clean(
-                        lambda gen: cn_pipe(
-                            prompt, negative_prompt=neg_prompt, image=canny,
-                            num_inference_steps=STEPS, controlnet_conditioning_scale=CONTROLNET_SCALE,
-                            generator=gen,
-                        ).images[0],
-                        seed, rembg_session, size=1024,
-                    )
-                    if not ok:
-                        raise RuntimeError(f"{color!r} variant still looked like a multi-view collage after {MAX_GEN_ATTEMPTS} attempts")
-                    write_image(variant_clean, color_path)
-
+        ok, error = generate_product(product, vocab, base_pipe, cn_pipe, rembg_session, args.seed_offset, args.force)
+        if ok:
             done += 1
             if done % 10 == 0:
                 print(f"  {done}/{len(products)} products done ({sku})")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  ! {sku} failed: {exc}")
+        else:
+            print(f"  ! {sku} failed: {error}")
             FAILURES_LOG.parent.mkdir(parents=True, exist_ok=True)
             with FAILURES_LOG.open("a") as f:
-                f.write(f"{sku}\t{exc}\n")
+                f.write(f"{sku}\t{error}\n")
 
     print(f"\nDone: {done}/{len(products)} products generated.")
 

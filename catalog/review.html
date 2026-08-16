@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billede-gennemgang</title>
+<style>
+  :root {
+    --bg: #5a3d28;
+    --card: #ffffff;
+    --ink: #2b2420;
+    --ink-soft: #6b5f54;
+    --border: #e4dbcd;
+    --accent: #a5673f;
+    --accent-dark: #7c4a2a;
+    --green: #2f7d4f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 20px;
+  }
+  header { text-align: center; margin-bottom: 20px; color: #fff; }
+  header h1 { margin: 0 0 6px; font-size: 1.4rem; }
+  #progress { font-size: 0.95rem; opacity: 0.85; }
+  #progress-bar-wrap {
+    width: 320px;
+    height: 6px;
+    background: rgba(255,255,255,0.25);
+    border-radius: 999px;
+    margin: 10px auto 0;
+    overflow: hidden;
+  }
+  #progress-bar { height: 100%; background: #fff; width: 0%; transition: width 0.2s ease; }
+
+  #card {
+    background: var(--card);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(20,12,6,0.35);
+    width: 100%;
+    max-width: 560px;
+    overflow: hidden;
+    position: relative;
+  }
+  #img-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #f4efe8;
+  }
+  #product-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #loading-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.85);
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+  #loading-overlay.show { display: flex; }
+
+  #info { padding: 20px 24px 8px; }
+  #info .cat { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent-dark); font-weight: 700; }
+  #info h2 { margin: 4px 0 2px; font-size: 1.2rem; }
+  #info .sku { color: var(--ink-soft); font-size: 0.85rem; }
+
+  #actions { display: flex; gap: 10px; padding: 16px 24px 24px; }
+  button {
+    flex: 1;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #accept-btn { background: var(--green); color: #fff; }
+  #accept-btn:hover:not(:disabled) { opacity: 0.9; }
+  #regen-btn { background: var(--accent-dark); color: #fff; }
+  #regen-btn:hover:not(:disabled) { opacity: 0.9; }
+
+  #skip-row { text-align: center; padding: 0 24px 20px; }
+  #skip-btn {
+    background: none;
+    border: none;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+    flex: none;
+    padding: 4px;
+  }
+
+  #jump-row {
+    display: flex;
+    gap: 8px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+  }
+  #jump-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+  }
+  #jump-btn {
+    flex: none;
+    width: auto;
+    padding: 8px 16px;
+    background: var(--card);
+    border: 1px solid var(--accent-dark);
+    color: var(--accent-dark);
+    font-size: 0.85rem;
+  }
+
+  #done-message {
+    display: none;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 40px;
+    text-align: center;
+    max-width: 480px;
+    box-shadow: 0 20px 50px rgba(20,12,6,0.35);
+  }
+  #status-msg { color: #ffb4a3; margin-top: 10px; font-size: 0.85rem; min-height: 1.2em; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Billede-gennemgang</h1>
+  <div id="progress">— / —</div>
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+</header>
+
+<div id="card">
+  <div id="img-wrap">
+    <img id="product-img" src="" alt="">
+    <div id="loading-overlay">Genererer…</div>
+  </div>
+  <div id="info">
+    <div class="cat" id="info-cat"></div>
+    <h2 id="info-name"></h2>
+    <div class="sku" id="info-sku"></div>
+  </div>
+  <div id="actions">
+    <button id="accept-btn">✓ Accepter</button>
+    <button id="regen-btn">↻ Regenerer</button>
+  </div>
+  <div id="skip-row"><button id="skip-btn">Spring over →</button></div>
+  <div id="jump-row">
+    <input type="text" id="jump-input" placeholder="Gå til SKU (f.eks. FRN-0123)">
+    <button id="jump-btn">Gå til</button>
+  </div>
+</div>
+
+<div id="done-message">
+  <h2>🎉 Alle produkter gennemgået</h2>
+  <p id="done-count"></p>
+</div>
+
+<div id="status-msg"></div>
+
+<script>
+  let currentSku = null;
+
+  function setStatus(msg) {
+    document.getElementById("status-msg").textContent = msg || "";
+  }
+
+  function renderProduct(p) {
+    currentSku = p.sku;
+    document.getElementById("card").style.display = "block";
+    document.getElementById("done-message").style.display = "none";
+    document.getElementById("product-img").src = p.image_url;
+    document.getElementById("info-cat").textContent = p.category;
+    document.getElementById("info-name").textContent = p.name;
+    document.getElementById("info-sku").textContent = p.sku;
+    updateProgress(p.accepted_count, p.total_count);
+    setButtonsDisabled(false);
+  }
+
+  function updateProgress(accepted, total) {
+    document.getElementById("progress").textContent = accepted + " / " + total + " accepteret";
+    const pct = total ? Math.round((accepted / total) * 100) : 0;
+    document.getElementById("progress-bar").style.width = pct + "%";
+  }
+
+  function showDone(accepted, total) {
+    document.getElementById("card").style.display = "none";
+    document.getElementById("done-message").style.display = "block";
+    document.getElementById("done-count").textContent = accepted + " / " + total + " produkter accepteret.";
+    updateProgress(accepted, total);
+  }
+
+  function setButtonsDisabled(disabled) {
+    document.getElementById("accept-btn").disabled = disabled;
+    document.getElementById("regen-btn").disabled = disabled;
+    document.getElementById("skip-btn").disabled = disabled;
+  }
+
+  function loadNext(afterSku) {
+    setStatus("");
+    const url = afterSku ? "/api/next?after=" + encodeURIComponent(afterSku) : "/api/next";
+    fetch(url).then(r => r.json()).then(data => {
+      if (data.done) {
+        showDone(data.accepted_count, data.total_count);
+      } else {
+        renderProduct(data);
+      }
+    });
+  }
+
+  document.getElementById("accept-btn").addEventListener("click", () => {
+    if (!currentSku) return;
+    const sku = currentSku;
+    setButtonsDisabled(true);
+    fetch("/api/accept/" + encodeURIComponent(sku), { method: "POST" })
+      .then(r => r.json())
+      .then(() => loadNext(sku));
+  });
+
+  document.getElementById("skip-btn").addEventListener("click", () => {
+    if (!currentSku) return;
+    loadNext(currentSku);
+  });
+
+  document.getElementById("regen-btn").addEventListener("click", () => {
+    if (!currentSku) return;
+    const sku = currentSku;
+    setButtonsDisabled(true);
+    document.getElementById("loading-overlay").classList.add("show");
+    setStatus("Genererer nyt billede på poden — dette kan tage 5-20 sekunder…");
+    fetch("/api/regenerate/" + encodeURIComponent(sku), { method: "POST" })
+      .then(r => {
+        if (!r.ok) return r.json().then(err => { throw new Error(err.detail || "Ukendt fejl"); });
+        return r.json();
+      })
+      .then(p => {
+        document.getElementById("loading-overlay").classList.remove("show");
+        setStatus("");
+        renderProduct(p);
+      })
+      .catch(err => {
+        document.getElementById("loading-overlay").classList.remove("show");
+        setButtonsDisabled(false);
+        setStatus("Fejl: " + err.message);
+      });
+  });
+
+  document.getElementById("jump-btn").addEventListener("click", () => {
+    const sku = document.getElementById("jump-input").value.trim().toUpperCase();
+    if (!sku) return;
+    fetch("/api/product/" + encodeURIComponent(sku))
+      .then(r => {
+        if (!r.ok) throw new Error("SKU ikke fundet");
+        return r.json();
+      })
+      .then(renderProduct)
+      .catch(err => setStatus("Fejl: " + err.message));
+  });
+  document.getElementById("jump-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("jump-btn").click();
+  });
+
+  loadNext(null);
+</script>
+
+</body>
+</html>

@@ -115,25 +115,25 @@ document.addEventListener('click', function (e) {
   }
   // "Se alle N <kategori> ->" link appended after a reply that only showed
   // the top SHOWN_MAX_RESULTS of a larger match — opens the same
-  // category-table modal the landing page's category cards use. When the
-  // shown set was narrowed by color (e.g. "10 red office chairs"), the
-  // link carries those exact colors as a ?farver= param so the modal opens
-  // pre-filtered to the same count the link's label promised, instead of
-  // the full unfiltered category.
+  // category-table modal the landing page's category cards use. The link
+  // carries the exact pool (every SKU behind that count, however it was
+  // filtered — color, price, dimension, store...) as a ?skus= param so the
+  // modal opens showing precisely what the link's count promised, instead
+  // of the full unfiltered category.
   var catA = e.target.closest('a[href*="kjeldbymobler.dk/kategori/"]');
   if (catA) {
     e.preventDefault();
     var rest = catA.getAttribute('href').split('/kategori/')[1];
     var parts = rest.split('?');
     var category = parts[0];
-    var colors = null;
+    var skus = null;
     if (parts[1]) {
-      var farverParam = new URLSearchParams(parts[1]).get('farver');
-      if (farverParam) {
-        try { colors = JSON.parse(farverParam); } catch (err) {}
+      var skusParam = new URLSearchParams(parts[1]).get('skus');
+      if (skusParam) {
+        try { skus = JSON.parse(skusParam); } catch (err) {}
       }
     }
-    window.parent.postMessage({type: 'kjeldby-open-category', category: category, colors: colors}, '*');
+    window.parent.postMessage({type: 'kjeldby-open-category', category: category, skus: skus}, '*');
   }
 });
 

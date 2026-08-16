@@ -141,31 +141,30 @@ function renderProductTable(opts) {
 let categoryModalSkus = [];
 let categorySort = { key: "name", dir: 1 };
 
-// colorFilter (optional): array of catalog color strings from the chat's
-// "[Se alle N <kategori> ->]" link — when the chat narrowed by color
-// ("10 red office chairs"), the link carries those exact colors so the
-// modal opens pre-filtered to the same 10, instead of the full
-// unfiltered category the label would otherwise misleadingly promise.
-// Matched case-insensitively since the retriever's own color detection
-// is also case-insensitive.
-function openCategoryModal(category, colorFilter) {
-  const filterLower = colorFilter && colorFilter.length ? colorFilter.map(c => c.toLowerCase()) : null;
-  categoryModalSkus = Object.keys(PRODUCTS).filter(sku => {
-    const p = PRODUCTS[sku];
-    if (p.category !== category) return false;
-    if (!filterLower) return true;
-    return (p.colors || []).some(c => filterLower.includes(c.toLowerCase()));
-  });
+// skuFilter (optional): exact SKU list from the chat's
+// "[Se alle N <kategori> ->]" link — this is the hidden pool behind that
+// count (result.pool in app/conversation.py), however it was filtered
+// (color, price, dimension, store, or any combination). Showing exactly
+// those SKUs, rather than re-deriving a filter client-side, is what makes
+// the modal's contents actually match the count the link promised —
+// re-deriving from color alone (the previous approach) silently dropped
+// any non-color filter, e.g. reopening all 67 unfiltered sectionals for a
+// "13 sectional sofas under 10,000 kr" link.
+function openCategoryModal(category, skuFilter) {
+  const hasFilter = skuFilter && skuFilter.length;
+  categoryModalSkus = hasFilter
+    ? skuFilter.filter(sku => PRODUCTS[sku])
+    : Object.keys(PRODUCTS).filter(sku => PRODUCTS[sku].category === category);
   categorySort = { key: "name", dir: 1 };
   const label = CATEGORY_LABELS[category] || category;
   const titleEl = document.getElementById("category-modal-title");
-  const clearBtnHtml = filterLower
-    ? ' <button class="filter-clear-btn" id="category-modal-clear-filter" type="button">✕ Nulstil farvefilter</button>'
+  const clearBtnHtml = hasFilter
+    ? ' <button class="filter-clear-btn" id="category-modal-clear-filter" type="button">✕ Se hele kategorien</button>'
     : "";
-  titleEl.innerHTML = filterLower
-    ? label.charAt(0).toUpperCase() + label.slice(1) + " — " + colorFilter.join(", ") + clearBtnHtml
+  titleEl.innerHTML = hasFilter
+    ? label.charAt(0).toUpperCase() + label.slice(1) + " — filtreret" + clearBtnHtml
     : label.charAt(0).toUpperCase() + label.slice(1);
-  if (filterLower) {
+  if (hasFilter) {
     document.getElementById("category-modal-clear-filter").addEventListener("click", () => openCategoryModal(category));
   }
   renderCategoryTable();
@@ -333,7 +332,7 @@ window.addEventListener("message", e => {
     openProductModal(e.data.sku);
   }
   if (e.data && e.data.type === "kjeldby-open-category" && e.data.category) {
-    openCategoryModal(e.data.category, e.data.colors || null);
+    openCategoryModal(e.data.category, e.data.skus || null);
   }
   if (e.data && e.data.type === "kjeldby-focus-update" && Array.isArray(e.data.products)) {
     liveFocusProducts = e.data.products;

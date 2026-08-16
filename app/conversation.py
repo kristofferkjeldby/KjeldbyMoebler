@@ -97,7 +97,17 @@ def _linkify(text: str, products: list[dict]) -> str:
     name_to_sku = {p["name"]: p["sku"] for p in products}
     for name in names:
         sku = name_to_sku[name]
-        pattern = re.compile(rf"\b{re.escape(name)}\b")
+        # Not \b...\b: some catalog names themselves end in punctuation
+        # (e.g. a nickname in quotes, "Rustik Sofa 'Landlig'") — \b requires
+        # a word/non-word transition, which can never be satisfied when the
+        # name's own trailing character is already non-word (') and the
+        # model happens to wrap it in another quote right after ('') —
+        # two non-word characters in a row have no \b between them, so the
+        # match silently fails and the item never gets linkified. A
+        # lookaround that only forbids a *word* character on either side
+        # still prevents mid-word substring matches (e.g. "Sofa" inside
+        # "Sofabord") without assuming the name's own edges are word chars.
+        pattern = re.compile(rf"(?<!\w){re.escape(name)}(?!\w)")
         text = pattern.sub(lambda m, sku=sku: f"[{m.group(0)}]({_PRODUCT_URL.format(sku=sku)})", text)
 
     for key, original in placeholders.items():
@@ -123,7 +133,15 @@ _ENUM_ITEM_RE = rf"['\"]?\[[^\]]+\]\(https://kjeldbymobler\.dk/produkt/[^\)]+\)[
 # a bare " og " match needs was already consumed by the comma's own
 # trailing \s*), and the whole run — and every item after that point —
 # silently falls out of the match instead of getting bulletized.
-_ENUM_SEP_RE = r"(?:,\s+og\s+|,\s*|\s+og\s+)"
+# The model sometimes formats a list with each item already on its own
+# line instead of comma-separated prose, only using "og" before the last
+# one ("...mellem\n[Item A]\n[Item B]\nog [Item C]."). "\s+og\s+" already
+# matches that final "\nog " separator (\s matches newlines), but the
+# plain "\n" separators between the earlier items match none of the
+# og/comma alternatives — the trailing bare "\s+" fallback catches those
+# (tried last, after the more specific alternatives, so it never steals a
+# match a comma/og alternative would have made).
+_ENUM_SEP_RE = r"(?:,\s+og\s+|,\s*|\s+og\s+|\s+)"
 _ENUM_RUN_RE = re.compile(rf"({_ENUM_ITEM_RE}(?:{_ENUM_SEP_RE}{_ENUM_ITEM_RE}){{2,}})\.?")
 
 
@@ -252,12 +270,15 @@ def finalize_turn(
         category = result.shown[0]["category"]
         label = CATEGORY_LABELS.get(category, category)
         see_all_url = CATEGORY_URL_BASE.format(category=category)
-        # Only attach a color filter freshly named THIS turn, not one
-        # merely carried over from a prior turn — a stale color from an
-        # earlier, unrelated topic could otherwise get attached to a
-        # category it was never actually filtered by.
-        if prompt.detected_colors:
-            see_all_url += "?farver=" + quote(json.dumps(sorted(prompt.detected_colors)))
+        # Carry the exact pool (the hidden full match set, not just what
+        # was shown) as a SKU list — this is what the link's count actually
+        # promises, whatever combination of filters produced it (color,
+        # price, dimension, store...). A color-only filter (the previous
+        # approach) only reconstructed price-less/dimension-less pools
+        # correctly; e.g. a price-filtered "13 sectional sofas under
+        # 10,000 kr" query would silently reopen all 67 unfiltered
+        # sectionals, since nothing carried the price threshold through.
+        see_all_url += "?skus=" + quote(json.dumps([p["sku"] for p in result.pool]))
         rendered += f"\n\n[Se alle {result.total_count} {label} →]({see_all_url})"
 
     if result.category_breakdown:

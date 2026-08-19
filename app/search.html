@@ -4,18 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Søg — Kjeldby Møbler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500&family=Manrope:wght@200;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
 
-<header class="hero" style="padding: 60px 24px 50px;">
+<header class="hero">
   <div class="brand">Kjeldby Møbler</div>
-  <h1 style="font-size: clamp(1.8rem, 4vw, 2.6rem);">Søg i katalog</h1>
+  <h1>Søg i katalog</h1>
   <p>Direkte søgning mod den samme retriever som chatten bruger — til manuel test af søgeresultater uden om modellen.</p>
 </header>
 
 <nav class="subnav">
-  <a href="landing_page.html">← Forsiden</a>
+  <a href="landing_page.html" class="subnav-cta subnav-cta-back"><span class="arrow">&#8592;</span>Forsiden</a>
 </nav>
 
 <main style="padding: 32px 24px;">
@@ -23,7 +26,7 @@
     <div class="search-box" id="search-box">
       <form id="search-form">
         <input type="text" id="search-input" placeholder="F.eks. &quot;hjørnesofa i grå&quot; eller &quot;stole&quot;" autocomplete="off">
-        <button type="submit">Søg</button>
+        <button type="submit" class="subnav-cta">Søg<span class="arrow">&#8594;</span></button>
       </form>
       <div class="autocomplete-list" id="autocomplete-list"></div>
     </div>
@@ -50,6 +53,26 @@
     </div>
   </section>
 </main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">Kjeldby Møbler</div>
+    <div class="footer-stores">
+      <div class="footer-store">
+        <h5>København</h5>
+        <div>Vesterbrogade 112<br>1620 København V<br>33 12 45 67</div>
+      </div>
+      <div class="footer-store">
+        <h5>Århus</h5>
+        <div>Søndergade 28<br>8000 Århus C<br>86 20 14 33</div>
+      </div>
+      <div class="footer-store">
+        <h5>Odense</h5>
+        <div>Vestergade 15<br>5000 Odense C<br>66 11 28 90</div>
+      </div>
+    </div>
+  </div>
+</footer>
 
 <!-- Duplicated from landing_page.html (same element IDs) — static/site.js
      wires up openProductModal/openCategoryModal against these at load

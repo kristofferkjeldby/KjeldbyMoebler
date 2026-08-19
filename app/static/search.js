@@ -43,7 +43,7 @@ function fetchAutocomplete(q) {
         return (
           '<div class="autocomplete-item" data-sku="' + it.sku + '">' +
             '<span class="ac-name">' + it.name + '</span>' +
-            '<span class="ac-cat">' + rightLabel + '</span>' +
+            '<span class="ac-cat pill">' + rightLabel + '</span>' +
           '</div>'
         );
       }).join("");

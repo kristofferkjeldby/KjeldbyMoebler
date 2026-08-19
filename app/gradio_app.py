@@ -50,6 +50,7 @@ PRODUCT_LINK_SCRIPT = """
      itself (not the inner message list) absorbs the extra height and
      scrolls as a whole — which drags the input box out of view too. */
   html, body { height: 100% !important; margin: 0 !important; overflow: hidden !important; }
+  html, body, .gradio-container { background: #fff !important; }
   /* .main.fillable had overflow:hidden but no actual fixed height, so it
      just grew past 900px along with everything else and silently clipped
      content with no scrollbar anywhere — verified via direct DOM inspection
@@ -59,6 +60,14 @@ PRODUCT_LINK_SCRIPT = """
     overflow: hidden !important;
     height: 900px !important;
     box-sizing: border-box !important;
+    background: #fff !important;
+  }
+  .gradio-container .main.fillable .wrap.svelte-zxu34v,
+  .gradio-container .main.fillable .contain.svelte-zxu34v,
+  .gradio-container .main.fillable .column,
+  .gradio-container .main.fillable .block.flex,
+  .gradio-container .main.fillable .wrapper {
+    background: #fff !important;
   }
   /* flex-shrink alone doesn't shrink a flex item below its content size —
      flex-basis defaults to "auto" (content-sized) unless overridden, so

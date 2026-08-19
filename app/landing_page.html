@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kjeldby Møbler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500&family=Manrope:wght@200;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
@@ -18,103 +21,138 @@
   <a href="#kategorier">Kategorier</a>
   <a href="#serier">Serier</a>
   <a href="#chat">Spørg os</a>
-  <a href="search.html">Søg</a>
+  <a href="search.html" class="subnav-cta">Søg<span class="arrow">&#8594;</span></a>
 </nav>
 
 <main>
 
   <section id="kategorier">
     <h2>Kategorier</h2>
-    <br>
+    <p class="section-sub">Find det rigtige møbel til hvert rum — fra sofa til sidebord.</p>
+    <div class="cat-ribbon">
+    <button class="cat-scroll-btn prev" type="button" aria-label="Forrige">&#8249;</button>
     <div class="cat-grid">
-      <div class="cat-card" data-category="sofa"><img class="icon-img" src="images/products/sofa/default.png" alt=""><div class="label">Sofa</div><div class="count">67 produkter</div></div>
-      <div class="cat-card" data-category="armchair"><img class="icon-img" src="images/products/laenestol/default.png" alt=""><div class="label">Lænestol</div><div class="count">102 produkter</div></div>
-      <div class="cat-card" data-category="loveseat"><img class="icon-img" src="images/products/to-personers_sofa/default.png" alt=""><div class="label">To-personers sofa</div><div class="count">49 produkter</div></div>
-      <div class="cat-card" data-category="sectional"><img class="icon-img" src="images/products/hjoernesofa/default.png" alt=""><div class="label">Hjørnesofa</div><div class="count">64 produkter</div></div>
-      <div class="cat-card" data-category="dining_table"><img class="icon-img" src="images/products/spisebord/default.png" alt=""><div class="label">Spisebord</div><div class="count">78 produkter</div></div>
-      <div class="cat-card" data-category="coffee_table"><img class="icon-img" src="images/products/sofabord/default.png" alt=""><div class="label">Sofabord</div><div class="count">80 produkter</div></div>
-      <div class="cat-card" data-category="side_table"><img class="icon-img" src="images/products/sidebord/default.png" alt=""><div class="label">Sidebord</div><div class="count">44 produkter</div></div>
-      <div class="cat-card" data-category="console_table"><img class="icon-img" src="images/products/konsolbord/default.png" alt=""><div class="label">Konsolbord</div><div class="count">70 produkter</div></div>
-      <div class="cat-card" data-category="bed_frame"><img class="icon-img" src="images/products/sengeramme/default.png" alt=""><div class="label">Sengeramme</div><div class="count">90 produkter</div></div>
-      <div class="cat-card" data-category="nightstand"><img class="icon-img" src="images/products/natbord/default.png" alt=""><div class="label">Natbord</div><div class="count">74 produkter</div></div>
-      <div class="cat-card" data-category="dresser"><img class="icon-img" src="images/products/komode/default.png" alt=""><div class="label">Kommode</div><div class="count">80 produkter</div></div>
-      <div class="cat-card" data-category="wardrobe"><img class="icon-img" src="images/products/garderobeskab/default.png" alt=""><div class="label">Garderobeskab</div><div class="count">30 produkter</div></div>
-      <div class="cat-card" data-category="bookshelf"><img class="icon-img" src="images/products/bogreol/default.png" alt=""><div class="label">Bogreol</div><div class="count">81 produkter</div></div>
-      <div class="cat-card" data-category="desk"><img class="icon-img" src="images/products/skrivebord/default.png" alt=""><div class="label">Skrivebord</div><div class="count">57 produkter</div></div>
-      <div class="cat-card" data-category="office_chair"><img class="icon-img" src="images/products/kontorstol/default.png" alt=""><div class="label">Kontorstol</div><div class="count">75 produkter</div></div>
-      <div class="cat-card" data-category="dining_chair"><img class="icon-img" src="images/products/spisebordstol/default.png" alt=""><div class="label">Spisebordsstol</div><div class="count">49 produkter</div></div>
-      <div class="cat-card" data-category="bar_stool"><img class="icon-img" src="images/products/barstol/default.png" alt=""><div class="label">Barstol</div><div class="count">76 produkter</div></div>
-      <div class="cat-card" data-category="tv_stand"><img class="icon-img" src="images/products/tv-bord/default.png" alt=""><div class="label">TV-bord</div><div class="count">47 produkter</div></div>
-      <div class="cat-card" data-category="outdoor_set"><img class="icon-img" src="images/products/havemoeblesaet/default.png" alt=""><div class="label">Havemøbelsæt</div><div class="count">92 produkter</div></div>
-      <div class="cat-card" data-category="rug"><img class="icon-img" src="images/products/taeppe/default.png" alt=""><div class="label">Tæppe</div><div class="count">72 produkter</div></div>
-      <div class="cat-card" data-category="lighting"><img class="icon-img" src="images/products/belysning/default.png" alt=""><div class="label">Belysning</div><div class="count">78 produkter</div></div>
-      <div class="cat-card" data-category="kitchen_unit"><img class="icon-img" src="images/products/koekkenelement/default.png" alt=""><div class="label">Køkkenelement</div><div class="count">62 produkter</div></div>
+      <div class="cat-card" data-category="sofa"><img class="icon-img" src="images/products/sofa/default.png" alt=""><div class="label">Sofaer</div><div class="count pill">67 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="armchair"><img class="icon-img" src="images/products/laenestol/default.png" alt=""><div class="label">Lænestole</div><div class="count pill">102 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="bookshelf"><img class="icon-img" src="images/products/bogreol/default.png" alt=""><div class="label">Bogreoler</div><div class="count pill">81 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="sectional"><img class="icon-img" src="images/products/hjoernesofa/default.png" alt=""><div class="label">Hjørnesofaer</div><div class="count pill">64 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="dining_table"><img class="icon-img" src="images/products/spisebord/default.png" alt=""><div class="label">Spiseborde</div><div class="count pill">78 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="coffee_table"><img class="icon-img" src="images/products/sofabord/default.png" alt=""><div class="label">Sofaborder</div><div class="count pill">80 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="side_table"><img class="icon-img" src="images/products/sidebord/default.png" alt=""><div class="label">Sideborder</div><div class="count pill">44 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="console_table"><img class="icon-img" src="images/products/konsolbord/default.png" alt=""><div class="label">Konsolborder</div><div class="count pill">70 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="bed_frame"><img class="icon-img" src="images/products/sengeramme/default.png" alt=""><div class="label">Sengerammer</div><div class="count pill">90 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="nightstand"><img class="icon-img" src="images/products/natbord/default.png" alt=""><div class="label">Natborde</div><div class="count pill">74 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="dresser"><img class="icon-img" src="images/products/komode/default.png" alt=""><div class="label">Kommoder</div><div class="count pill">80 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="wardrobe"><img class="icon-img" src="images/products/garderobeskab/default.png" alt=""><div class="label">Garderobeskabe</div><div class="count pill">30 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="loveseat"><img class="icon-img" src="images/products/to-personers_sofa/default.png" alt=""><div class="label">To-personers sofaer</div><div class="count pill">49 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="desk"><img class="icon-img" src="images/products/skrivebord/default.png" alt=""><div class="label">Skriveborde</div><div class="count pill">57 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="office_chair"><img class="icon-img" src="images/products/kontorstol/default.png" alt=""><div class="label">Kontorstole</div><div class="count pill">75 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="dining_chair"><img class="icon-img" src="images/products/spisebordstol/default.png" alt=""><div class="label">Spisebordsstole</div><div class="count pill">49 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="bar_stool"><img class="icon-img" src="images/products/barstol/default.png" alt=""><div class="label">Barstole</div><div class="count pill">76 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="tv_stand"><img class="icon-img" src="images/products/tv-bord/default.png" alt=""><div class="label">TV-borde</div><div class="count pill">47 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="outdoor_set"><img class="icon-img" src="images/products/havemoeblesaet/default.png" alt=""><div class="label">Havemøbelsæt</div><div class="count pill">92 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="rug"><img class="icon-img" src="images/products/taeppe/default.png" alt=""><div class="label">Tæpper</div><div class="count pill">72 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="lighting"><img class="icon-img" src="images/products/belysning/default.png" alt=""><div class="label">Belysning</div><div class="count pill">78 produkter<span class="arrow">&#8594;</span></div></div>
+      <div class="cat-card" data-category="kitchen_unit"><img class="icon-img" src="images/products/koekkenelement/default.png" alt=""><div class="label">Køkkenelementer</div><div class="count pill">62 produkter<span class="arrow">&#8594;</span></div></div>
+    </div>
+    <button class="cat-scroll-btn next" type="button" aria-label="Næste">&#8250;</button>
     </div>
   </section>
 
   <section id="serier">
     <h2>Matchende serier</h2>
+    <p class="section-sub">Sammensatte møbelserier, der er designet til at spille sammen.</p>
     <br>
     <div class="series-grid">
 
       <div class="series-card">
-        <div class="series-head"><div class="tag">Serie</div><h3>Skandinavisk Harmoni</h3></div>
-        <img class="series-img" src="images/harmoni_kollektion.png" alt="">
-        <ul>
+        <div class="series-body">
+          <div class="series-img-wrap">
+          <img class="series-img" src="images/harmoni_kollektion.png" alt="">
+          <div class="tag pill series-tag">Serie</div>
+          </div>
+          <div class="series-head"><h3>Skandinavisk Harmoni</h3></div>
+          <ul>
           <li><span class="pname" data-sku="FRN-0034">Skandinavisk Harmoni Sofa</span><span class="pcat">Sofa</span></li>
           <li><span class="pname" data-sku="FRN-0035">Skandinavisk Harmoni Armchair</span><span class="pcat">Lænestol</span></li>
           <li><span class="pname" data-sku="FRN-0036">Skandinavisk Harmoni Coffee Table</span><span class="pcat">Sofabord</span></li>
         </ul>
+        </div>
       </div>
 
       <div class="series-card">
-        <div class="series-head"><div class="tag">Serie</div><h3>Skandinavisk Hygge Kollektion</h3></div>
-        <img class="series-img" src="images/skandinavisk_hygge_kollektion.png" alt="">
-        <ul>
+        <div class="series-body">
+          <div class="series-img-wrap">
+          <img class="series-img" src="images/skandinavisk_hygge_kollektion.png" alt="">
+          <div class="tag pill series-tag">Serie</div>
+          </div>
+          <div class="series-head"><h3>Skandinavisk Hygge Kollektion</h3></div>
+          <ul>
           <li><span class="pname" data-sku="FRN-0016">Skandinavisk Hygge Sofa</span><span class="pcat">Sofa</span></li>
           <li><span class="pname" data-sku="FRN-0017">Skandinavisk Hygge Armchair</span><span class="pcat">Lænestol</span></li>
           <li><span class="pname" data-sku="FRN-0018">Skandinavisk Hygge Coffee Table</span><span class="pcat">Sofabord</span></li>
         </ul>
+        </div>
       </div>
 
       <div class="series-card">
-        <div class="series-head"><div class="tag">Serie</div><h3>Skandinavisk Elegance</h3></div>
-        <img class="series-img" src="images/skandinavisk_elegance.png" alt="">
-        <ul>
+        <div class="series-body">
+          <div class="series-img-wrap">
+          <img class="series-img" src="images/skandinavisk_elegance.png" alt="">
+          <div class="tag pill series-tag">Serie</div>
+          </div>
+          <div class="series-head"><h3>Skandinavisk Elegance</h3></div>
+          <ul>
           <li><span class="pname" data-sku="FRN-0019">Skandinavisk Elegance Sengestativ</span><span class="pcat">Sengeramme</span></li>
           <li><span class="pname" data-sku="FRN-0020">Skandinavisk Elegance Natbord</span><span class="pcat">Natbord</span></li>
           <li><span class="pname" data-sku="FRN-0021">Skandinavisk Elegance Kommode</span><span class="pcat">Kommode</span></li>
         </ul>
+        </div>
       </div>
 
       <div class="series-card">
-        <div class="series-head"><div class="tag">Serie</div><h3>Skagen Kollektion</h3></div>
-        <img class="series-img" src="images/skagen_kollektion.png" alt="">
-        <ul>
+        <div class="series-body">
+          <div class="series-img-wrap">
+          <img class="series-img" src="images/skagen_kollektion.png" alt="">
+          <div class="tag pill series-tag">Serie</div>
+          </div>
+          <div class="series-head"><h3>Skagen Kollektion</h3></div>
+          <ul>
           <li><span class="pname" data-sku="FRN-0025">Skagen Sofa</span><span class="pcat">Sofa</span></li>
           <li><span class="pname" data-sku="FRN-0026">Skagen Armchair</span><span class="pcat">Lænestol</span></li>
           <li><span class="pname" data-sku="FRN-0027">Skagen Coffee Table</span><span class="pcat">Sofabord</span></li>
         </ul>
+        </div>
       </div>
 
       <div class="series-card">
-        <div class="series-head"><div class="tag">Serie</div><h3>Skandinavisk Smag</h3></div>
-        <img class="series-img" src="images/skandinavisk_smag.png" alt="">
-        <ul>
+        <div class="series-body">
+          <div class="series-img-wrap">
+          <img class="series-img" src="images/skandinavisk_smag.png" alt="">
+          <div class="tag pill series-tag">Serie</div>
+          </div>
+          <div class="series-head"><h3>Skandinavisk Smag</h3></div>
+          <ul>
           <li><span class="pname" data-sku="FRN-0028">Skandinavisk Smag Sengestativ</span><span class="pcat">Sengeramme</span></li>
           <li><span class="pname" data-sku="FRN-0029">Skandinavisk Smag Natbord</span><span class="pcat">Natbord</span></li>
           <li><span class="pname" data-sku="FRN-0030">Skandinavisk Smag Kommode</span><span class="pcat">Kommode</span></li>
         </ul>
+        </div>
       </div>
 
       <div class="series-card">
-        <div class="series-head"><div class="tag">Serie</div><h3>Nordisk Hygge Kollektion</h3></div>
-        <img class="series-img" src="images/nordisk_hygge_kollektion.png" alt="">
-        <ul>
+        <div class="series-body">
+          <div class="series-img-wrap">
+          <img class="series-img" src="images/nordisk_hygge_kollektion.png" alt="">
+          <div class="tag pill series-tag">Serie</div>
+          </div>
+          <div class="series-head"><h3>Nordisk Hygge Kollektion</h3></div>
+          <ul>
           <li><span class="pname" data-sku="FRN-0341">Lyng Sofa</span><span class="pcat">Sofa</span></li>
           <li><span class="pname" data-sku="FRN-0342">Birke Armchair</span><span class="pcat">Lænestol</span></li>
           <li><span class="pname" data-sku="FRN-0343">Ege Kaffebord</span><span class="pcat">Sofabord</span></li>
         </ul>
+        </div>
       </div>
 
     </div>
@@ -125,7 +163,7 @@
 <section id="chat" class="chat-section">
   <main style="padding: 32px 24px;">
     <h2>Spørg os</h2>
-    <br>
+    <p class="section-sub">Stil et spørgsmål om pris, mål, farver eller lager — vores assistent svarer med det samme.</p>
     <div class="chat-layout">
       <div class="chat-wrap">
         <iframe
@@ -161,7 +199,7 @@
         </div>
         <div class="focus-cta">
           <img src="images/kundeservice.png" alt="Kundeservice">
-          <button class="focus-cta-btn" type="button">Kontakt kundeservice</button>
+          <button class="focus-cta-btn pill" type="button">Kontakt kundeservice<span class="arrow">&#8594;</span></button>
         </div>
       </div>
     </div>
@@ -185,7 +223,6 @@
         <div>Vestergade 15<br>5000 Odense C<br>66 11 28 90</div>
       </div>
     </div>
-    <div class="footer-bottom">Kjeldby Møbler — demo-side til test af produktassistent. Ikke en rigtig forretning.</div>
   </div>
 </footer>
 

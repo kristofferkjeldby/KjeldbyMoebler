@@ -417,3 +417,24 @@ function renderFocusPanel() {
     });
   });
 }
+
+const catGrid = document.querySelector(".cat-grid");
+const catPrevBtn = document.querySelector(".cat-scroll-btn.prev");
+const catNextBtn = document.querySelector(".cat-scroll-btn.next");
+if (catGrid && catPrevBtn && catNextBtn) {
+  catGrid.scrollLeft = 0;
+  const scrollByCards = dir => {
+    const card = catGrid.querySelector(".cat-card");
+    const step = card ? card.getBoundingClientRect().width + 18 : catGrid.clientWidth * 0.8;
+    catGrid.scrollBy({ left: dir * step * 2, behavior: "smooth" });
+  };
+  catPrevBtn.addEventListener("click", () => scrollByCards(-1));
+  catNextBtn.addEventListener("click", () => scrollByCards(1));
+  const updateCatButtons = () => {
+    catPrevBtn.classList.toggle("hidden", catGrid.scrollLeft <= 4);
+    catNextBtn.classList.toggle("hidden", catGrid.scrollLeft >= catGrid.scrollWidth - catGrid.clientWidth - 4);
+  };
+  catGrid.addEventListener("scroll", updateCatButtons);
+  window.addEventListener("resize", updateCatButtons);
+  updateCatButtons();
+}

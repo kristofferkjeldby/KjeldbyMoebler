@@ -39,11 +39,30 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    position: relative;
     font-family: "Manrope", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
     font-weight: 200;
-    background: var(--background-gradient);
+    /* Flat, not the gradient directly — a page-length-relative gradient
+       looks completely different on a long page (landing, thousands of px
+       tall) vs a short one (search), since the same 0%-100% transition gets
+       stretched or compressed to fit whatever the document's total height
+       happens to be. body::before below pins the actual gradient to a
+       fixed pixel band at the top instead, so both pages render an
+       identical transition regardless of how much content follows. */
+    background: var(--background);
     color: var(--ink);
     line-height: 1.5;
+  }
+  body::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 700px;
+    background: var(--background-gradient);
+    z-index: -1;
+    pointer-events: none;
   }
   header.hero {
     background: url("../images/header.png") center center / cover no-repeat;
@@ -90,7 +109,7 @@
     width: 100%;
     max-width: 900px;
     margin: -34px auto 16px;
-    padding: 10px 12px 10px 28px;
+    padding: 16px 18px 16px 34px;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -99,6 +118,20 @@
     top: 16px;
     z-index: 10;
     flex-wrap: wrap;
+  }
+  nav.subnav::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  nav.subnav > * {
+    position: relative;
+    z-index: 1;
   }
   nav.subnav a {
     color: var(--ink-soft);
@@ -217,6 +250,12 @@
   }
   .pill:not(:has(.arrow)) {
     padding: 5px 14px;
+  }
+  .pill:has(.arrow):hover,
+  .cat-card:hover .pill:has(.arrow),
+  .series-card:hover .pill:has(.arrow) {
+    background: var(--accent-dark);
+    border-color: var(--accent-dark);
   }
   @keyframes pill-arrow-nudge {
     0% { transform: translateX(0); }
@@ -350,28 +389,37 @@
   }
   .modal-overlay.open { display: flex; }
   .modal-card {
-    background: #fff;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: var(--card-radius);
     max-width: 640px;
     width: 100%;
     max-height: 90vh;
-    overflow-y: auto;
     box-shadow: 0 24px 60px rgba(20, 12, 6, 0.35);
     position: relative;
+    padding: 5px;
+  }
+  .modal-inner {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--card-radius) - 5px);
+    max-height: calc(90vh - 10px);
+    overflow-y: auto;
   }
   .modal-close {
     position: absolute;
-    top: 14px;
-    right: 14px;
+    top: 16px;
+    right: 16px;
     width: 32px;
     height: 32px;
     border-radius: 50%;
     border: none;
-    background: rgba(255,255,255,0.85);
+    background: #201c18;
     font-size: 1.1rem;
     line-height: 1;
     cursor: pointer;
-    color: var(--ink);
+    color: #fff;
+    z-index: 2;
   }
   .modal-img-wrap {
     position: relative;
@@ -451,26 +499,26 @@
     margin-top: 22px;
     padding: 14px;
     border: none;
-    border-radius: 10px;
-    background: var(--accent-dark);
+    border-radius: 999px;
+    background: #201c18;
     color: #fff;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s ease;
   }
-  .modal-cart-btn:hover { background: var(--accent); }
+  .modal-cart-btn:hover { background: var(--accent-dark); }
   .modal-cart-btn.added { background: #2f7d4f; }
 
   .modal-card.wide { max-width: 1400px; }
   .table-modal-head {
     padding: 24px 28px 4px;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
   }
-  .table-modal-head h3 { margin: 0; font-size: 1.3rem; }
+  .table-modal-head h3 { margin: 0; font-size: 1.5rem; font-family: "Fraunces", "Manrope", serif; font-weight: 500; }
   .filter-clear-btn {
     margin-left: 10px;
     padding: 2px 10px;
@@ -483,8 +531,7 @@
     vertical-align: middle;
   }
   .filter-clear-btn:hover { background: var(--border); color: var(--ink); }
-  .table-modal-head .count { color: var(--ink-soft); font-size: 0.85rem; }
-  .table-modal-wrap { padding: 12px 28px 28px; overflow-x: auto; }
+  .table-modal-wrap { padding: 12px 0 28px; overflow-x: auto; }
   .product-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
   .product-table th, .product-table td {
     padding: 10px 12px;
@@ -492,6 +539,8 @@
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
   }
+  .product-table th:first-child, .product-table td:first-child { padding-left: 28px; }
+  .product-table th:last-child, .product-table td:last-child { padding-right: 28px; }
   .product-table th {
     color: var(--ink-soft);
     font-size: 0.75rem;
@@ -514,9 +563,13 @@
   .product-table th.sort-active .sort-arrow { opacity: 1; color: var(--accent-dark); }
   .product-table tbody tr {
     cursor: pointer;
-    transition: background 0.1s ease;
+    transition: background 0.1s ease, color 0.1s ease;
   }
-  .product-table tbody tr:hover { background: var(--bg-alt); }
+  .product-table tbody tr:hover {
+    background: #201c18;
+    color: #fff;
+  }
+  .product-table tbody tr:hover td.col-price .was { color: #cfc9c2; }
   .product-table td.col-name { white-space: normal; font-weight: 600; }
   .product-table td.col-price .was { color: var(--ink-soft); text-decoration: line-through; font-weight: 400; margin-left: 6px; }
   .product-table .row-thumb {
@@ -547,7 +600,7 @@
   }
   .chat-wrap iframe {
     width: 100%;
-    height: 900px;
+    height: 850px;
     border: none;
     border-radius: calc(var(--card-radius) - 5px);
     display: block;
@@ -572,7 +625,7 @@
     border-radius: var(--card-radius);
     box-shadow: var(--card-shadow);
     padding: 18px;
-    height: 916px;
+    height: 862px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -583,10 +636,8 @@
   }
   .focus-panel h4 {
     margin: 0;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--ink-soft);
+    font-size: 1.15rem;
+    color: var(--ink);
   }
   .focus-panel-head {
     display: flex;

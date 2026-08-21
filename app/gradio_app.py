@@ -35,9 +35,37 @@ PRODUCT_LINK_SCRIPT = """
 <style>
   #focus-data, #chat-log-data { position: absolute !important; width: 1px !important; height: 1px !important;
     overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
-  #copy-log-btn { align-self: flex-end !important; margin: 0 0 4px !important; flex: 0 0 auto !important; }
+  #copy-log-btn {
+    align-self: center !important;
+    margin: 10px 0 0 !important;
+    flex: 0 0 auto !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    width: auto !important;
+    padding: 8px 8px 8px 20px !important;
+    border-radius: 999px !important;
+    border: none !important;
+    background: #201c18 !important;
+    color: #fff !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+  }
+  #copy-log-btn:hover { background: #7c4a2a !important; }
+  #copy-log-btn::after {
+    content: "→";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+    font-size: 0.85rem;
+  }
   #case-input-panel { display: flex !important; gap: 6px !important; align-items: center !important;
-    align-self: flex-end !important; margin: 0 0 4px !important; }
+    align-self: center !important; margin: 10px 0 0 !important; }
   #case-input-panel input { flex: 1 !important; min-width: 180px !important; padding: 4px 8px !important;
     font-size: 0.8rem !important; border: 1px solid #ccc !important; border-radius: 6px !important; }
   #case-input-panel button { font-size: 0.8rem !important; padding: 4px 10px !important; cursor: pointer !important; }
@@ -58,7 +86,7 @@ PRODUCT_LINK_SCRIPT = """
   .gradio-container .main.fillable {
     padding: 10px 15px !important;
     overflow: hidden !important;
-    height: 900px !important;
+    height: 850px !important;
     box-sizing: border-box !important;
     background: #fff !important;
   }
@@ -484,10 +512,6 @@ def build_app(app: FastAPI, model_name: str, base_url: str) -> gr.Blocks:
         # relay PRODUCT_LINK_SCRIPT already uses for focus-data (see its
         # comment for why polling, not visible=False).
         chat_log_data = gr.Textbox(elem_id="chat-log-data", show_label=False, container=False)
-        # Not wired to any server-side handler — PRODUCT_LINK_SCRIPT below
-        # handles its click entirely client-side (reveal an inline
-        # "Forventet resultat" input, then POST to /api/cases on submit).
-        gr.Button("🐞 Gem som test-case", elem_id="copy-log-btn", size="sm")
         chat = gr.ChatInterface(
             fn=respond,
             chatbot=gr.Chatbot(height="100%", buttons=[], feedback_options=None),
@@ -498,6 +522,10 @@ def build_app(app: FastAPI, model_name: str, base_url: str) -> gr.Blocks:
                 "Følger der en madras med Skandinavisk Elegance Sengestativ?",
             ],
         )
+        # Not wired to any server-side handler — PRODUCT_LINK_SCRIPT below
+        # handles its click entirely client-side (reveal an inline
+        # "Forventet resultat" input, then POST to /api/cases on submit).
+        gr.Button("Gem som test-case", elem_id="copy-log-btn", size="sm")
         # The trash/clear icon on the chatbot only clears the visible
         # conversation by default — pool_state/shown_state/color_state are
         # separate server-side variables that need their own reset, and the frontend
